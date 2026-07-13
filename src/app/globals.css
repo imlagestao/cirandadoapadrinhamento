@@ -7,12 +7,12 @@
   --muted: #6b7566;
   --border: #e5e9df;
 
-  /* Ciranda do Apadrinhamento brand palette */
-  --brand-green: #8cc63f;
-  --brand-green-dark: #6ea82c;
-  --brand-blue: #4bc3da;
-  --brand-blue-dark: #2fa0b8;
-  --brand-pink: #f4a0c6;
+  /* Ciranda do Apadrinhamento brand palette — sampled directly from the logo */
+  --brand-green: #a8cf45;
+  --brand-green-dark: #7e9b34;
+  --brand-blue: #5cc6d0;
+  --brand-blue-dark: #45949c;
+  --brand-pink: #ff81ba;
 }
 
 @theme inline {
