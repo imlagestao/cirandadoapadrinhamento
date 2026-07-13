@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import LogoutButton from "@/components/LogoutButton";
 
 const NAV_ITEMS = [
   { href: "/", label: "Painel" },
@@ -34,7 +35,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </Link>
           ))}
         </nav>
-        <div className="px-6 py-4 text-xs text-muted">Instituto Mãe Lalu</div>
+        <div className="flex flex-col gap-2 px-6 py-4">
+          <span className="text-xs text-muted">Instituto Mãe Lalu</span>
+          <LogoutButton />
+        </div>
       </aside>
 
       <div className="flex min-h-screen flex-1 flex-col">
