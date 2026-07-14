@@ -1,9 +1,10 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 
 type PadrinhoRow = {
   id: string;
   nome: string;
-  telefone: string | null;
+  whatsapp: string | null;
   email: string | null;
   status: string;
   apadrinhamentos: { criancas: { nome: string } | null }[] | null;
@@ -14,23 +15,32 @@ export default async function PadrinhosPage() {
 
   const { data, count } = await supabase
     .from("padrinhos")
-    .select("id, nome, telefone, email, status, apadrinhamentos(criancas(nome))", {
-      count: "exact",
-    })
+    .select(
+      "id, nome, whatsapp, email, status, apadrinhamentos(criancas(nome))",
+      { count: "exact" },
+    )
     .order("nome")
-    .limit(50);
+    .limit(200);
 
   const padrinhos = data as unknown as PadrinhoRow[] | null;
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">
-          Padrinhos
-        </h1>
-        <p className="mt-1 text-sm text-muted">
-          {count ?? 0} padrinhos cadastrados.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">
+            Padrinho/Madrinha
+          </h1>
+          <p className="mt-1 text-sm text-muted">
+            {count ?? 0} cadastrados.
+          </p>
+        </div>
+        <Link
+          href="/padrinhos/novo"
+          className="rounded-lg bg-brand-blue-dark px-4 py-2 text-sm font-semibold text-white transition-colors hover:opacity-90"
+        >
+          Novo cadastro
+        </Link>
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
@@ -50,11 +60,17 @@ export default async function PadrinhosPage() {
                 className="border-b border-border last:border-0"
               >
                 <td className="px-4 py-3 font-medium text-foreground">
-                  {padrinho.nome}
+                  <Link
+                    href={`/padrinhos/${padrinho.id}`}
+                    className="text-brand-blue-dark hover:underline"
+                  >
+                    {padrinho.nome}
+                  </Link>
                 </td>
                 <td className="px-4 py-3 text-muted">
-                  {[padrinho.telefone, padrinho.email].filter(Boolean).join(" · ") ||
-                    "—"}
+                  {[padrinho.whatsapp, padrinho.email]
+                    .filter(Boolean)
+                    .join(" · ") || "—"}
                 </td>
                 <td className="px-4 py-3 text-muted">
                   {padrinho.apadrinhamentos

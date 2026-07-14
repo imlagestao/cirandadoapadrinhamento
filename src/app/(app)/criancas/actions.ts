@@ -2,6 +2,7 @@
 
 import ExcelJS from "exceljs";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
 type StatusCrianca = "matriculado" | "retirado";
@@ -13,12 +14,19 @@ type LinhaCrianca = {
   idade: number | null;
   nascimento: string | null;
   comunidade: string | null;
-  padrinho: string | null;
+  padrinhos: string[];
   status: StatusCrianca;
 };
 
-const SHEETS: { nome: string; status: StatusCrianca }[] = [
-  { nome: "GERAL", status: "matriculado" },
+// A aba GERAL costuma ficar desatualizada — usamos as abas de cada sala,
+// que são as que a equipe mantém em dia. Nessas abas a coluna TURMA só tem
+// a letra do grupo (A/B/C); o nome da sala vem do nome da própria aba.
+const SHEETS: { nome: string; status: StatusCrianca; salaBase?: string }[] = [
+  { nome: "SALA ROSA", status: "matriculado", salaBase: "ROSA" },
+  { nome: "SALA AMARELA", status: "matriculado", salaBase: "AMARELA" },
+  { nome: "SALA VERDE", status: "matriculado", salaBase: "VERDE" },
+  { nome: "SALA AZUL", status: "matriculado", salaBase: "AZUL" },
+  { nome: "CIRAND. MUNDO", status: "matriculado", salaBase: "CIRAND. MUNDO" },
   { nome: "Retirados", status: "retirado" },
 ];
 
@@ -68,8 +76,9 @@ function cellInt(cell: ExcelJS.Cell | undefined): number | null {
   if (!cell) return null;
   const v = cell.value;
   if (typeof v === "number") return Math.round(v);
-  if (typeof v === "string" && v.trim() && !isNaN(Number(v))) {
-    return Math.round(Number(v));
+  if (typeof v === "string") {
+    const match = v.match(/\d+/);
+    if (match) return parseInt(match[0], 10);
   }
   return null;
 }
@@ -81,6 +90,16 @@ function normalizaNome(nome: string): string {
     .trim()
     .toUpperCase()
     .replace(/\s+/g, " ");
+}
+
+// Algumas crianças têm mais de um padrinho/madrinha, identificado na
+// planilha como "NOME + NOME".
+function splitPadrinhos(valor: string | null): string[] {
+  if (!valor) return [];
+  return valor
+    .split("+")
+    .map((v) => v.trim())
+    .filter((v) => v.length > 0);
 }
 
 export async function importarPlanilha(formData: FormData) {
@@ -95,7 +114,7 @@ export async function importarPlanilha(formData: FormData) {
 
   const linhas: LinhaCrianca[] = [];
 
-  for (const { nome: nomeAba, status } of SHEETS) {
+  for (const { nome: nomeAba, status, salaBase } of SHEETS) {
     const worksheet = workbook.getWorksheet(nomeAba);
     if (!worksheet) continue;
 
@@ -108,18 +127,29 @@ export async function importarPlanilha(formData: FormData) {
       const nome = cellText(row.getCell(colAluno));
       if (!nome) return;
 
+      const turmaCelula = map["TURMA"]
+        ? cellText(row.getCell(map["TURMA"]))
+        : null;
+      const turma = salaBase
+        ? turmaCelula
+          ? `${salaBase} (${turmaCelula})`
+          : salaBase
+        : turmaCelula;
+
       linhas.push({
         nome,
-        turma: map["TURMA"] ? cellText(row.getCell(map["TURMA"])) : null,
+        turma,
         turno: map["TURNO"] ? cellText(row.getCell(map["TURNO"])) : null,
         idade: map["IDADE"] ? cellInt(row.getCell(map["IDADE"])) : null,
         nascimento: map["NASC."] ? cellDate(row.getCell(map["NASC."])) : null,
         comunidade: map["COMUNIDADE"]
           ? cellText(row.getCell(map["COMUNIDADE"]))
           : null,
-        padrinho: map["PADRINHO/MADRINHA"]
-          ? cellText(row.getCell(map["PADRINHO/MADRINHA"]))
-          : null,
+        padrinhos: splitPadrinhos(
+          map["PADRINHO/MADRINHA"]
+            ? cellText(row.getCell(map["PADRINHO/MADRINHA"]))
+            : null,
+        ),
         status,
       });
     });
@@ -129,17 +159,28 @@ export async function importarPlanilha(formData: FormData) {
     return {
       ok: false,
       erro:
-        "Nenhuma linha encontrada. Confira se o arquivo tem as abas GERAL e Retirados.",
+        "Nenhuma linha encontrada. Confira se o arquivo tem as abas SALA ROSA/AMARELA/VERDE/AZUL, CIRAND. MUNDO e Retirados.",
     };
   }
 
   const supabase = await createClient();
 
+  // Reimportação substitui o cadastro de crianças (e os vínculos, que caem
+  // em cascata) para não duplicar quem já estava importado. Os padrinhos são
+  // mantidos, já que podem ter dados preenchidos manualmente (telefone etc.).
+  const { error: erroLimpeza } = await supabase
+    .from("criancas")
+    .delete()
+    .neq("id", "00000000-0000-0000-0000-000000000000");
+  if (erroLimpeza) {
+    return { ok: false, erro: erroLimpeza.message };
+  }
+
   // Padrinhos: reaproveita os que já existem (por nome normalizado) e cria os que faltam.
   const nomesPadrinhos = new Map<string, string>();
   for (const linha of linhas) {
-    if (linha.padrinho) {
-      nomesPadrinhos.set(normalizaNome(linha.padrinho), linha.padrinho);
+    for (const nomePadrinho of linha.padrinhos) {
+      nomesPadrinhos.set(normalizaNome(nomePadrinho), nomePadrinho);
     }
   }
 
@@ -190,18 +231,20 @@ export async function importarPlanilha(formData: FormData) {
     return { ok: false, erro: erroCriancas.message };
   }
 
-  // Vínculos crianca <-> padrinho, na mesma ordem em que foram inseridas.
-  const vinculos = (criancasInseridas ?? [])
-    .map((crianca, i) => {
-      const padrinhoNome = linhas[i]?.padrinho;
-      if (!padrinhoNome) return null;
-      const padrinhoId = padrinhoIdPorNomeNormalizado.get(
-        normalizaNome(padrinhoNome),
-      );
-      if (!padrinhoId) return null;
-      return { crianca_id: crianca.id, padrinho_id: padrinhoId };
-    })
-    .filter((v): v is { crianca_id: string; padrinho_id: string } => v !== null);
+  // Vínculos crianca <-> padrinho (uma criança pode ter mais de um), na
+  // mesma ordem em que as crianças foram inseridas.
+  const vinculos = (criancasInseridas ?? []).flatMap((crianca, i) => {
+    const nomesDaLinha = linhas[i]?.padrinhos ?? [];
+    return nomesDaLinha
+      .map((nomePadrinho) => {
+        const padrinhoId = padrinhoIdPorNomeNormalizado.get(
+          normalizaNome(nomePadrinho),
+        );
+        if (!padrinhoId) return null;
+        return { crianca_id: crianca.id, padrinho_id: padrinhoId };
+      })
+      .filter((v): v is { crianca_id: string; padrinho_id: string } => v !== null);
+  });
 
   if (vinculos.length > 0) {
     const { error: erroVinculos } = await supabase
@@ -222,4 +265,96 @@ export async function importarPlanilha(formData: FormData) {
     padrinhos: padrinhosParaCriar.length,
     vinculos: vinculos.length,
   };
+}
+
+function textoForm(formData: FormData, campo: string): string | null {
+  const v = formData.get(campo);
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  return s || null;
+}
+
+function dadosCrianca(formData: FormData) {
+  const idadeTexto = textoForm(formData, "idade");
+  return {
+    nome: textoForm(formData, "nome") ?? "",
+    turma: textoForm(formData, "turma"),
+    turno: textoForm(formData, "turno"),
+    idade: idadeTexto ? parseInt(idadeTexto, 10) : null,
+    nascimento: textoForm(formData, "nascimento"),
+    comunidade: textoForm(formData, "comunidade"),
+    status: textoForm(formData, "status") ?? "matriculado",
+  };
+}
+
+async function salvarVinculosPadrinhos(
+  criancaId: string,
+  formData: FormData,
+) {
+  const supabase = await createClient();
+  const padrinhoIds = formData.getAll("padrinho_ids").filter(
+    (v): v is string => typeof v === "string" && v.length > 0,
+  );
+
+  await supabase.from("apadrinhamentos").delete().eq("crianca_id", criancaId);
+
+  if (padrinhoIds.length > 0) {
+    await supabase.from("apadrinhamentos").insert(
+      padrinhoIds.map((padrinhoId) => ({
+        crianca_id: criancaId,
+        padrinho_id: padrinhoId,
+      })),
+    );
+  }
+}
+
+export async function criarCrianca(
+  formData: FormData,
+): Promise<{ ok: false; erro: string } | undefined> {
+  const supabase = await createClient();
+  const dados = dadosCrianca(formData);
+
+  if (!dados.nome) {
+    return { ok: false, erro: "Informe o nome." };
+  }
+
+  const { data, error } = await supabase
+    .from("criancas")
+    .insert(dados)
+    .select("id")
+    .single();
+
+  if (error) {
+    return { ok: false, erro: error.message };
+  }
+
+  await salvarVinculosPadrinhos(data.id, formData);
+
+  revalidatePath("/criancas");
+  revalidatePath("/padrinhos");
+  redirect("/criancas");
+}
+
+export async function atualizarCrianca(
+  id: string,
+  formData: FormData,
+): Promise<{ ok: false; erro: string } | undefined> {
+  const supabase = await createClient();
+  const dados = dadosCrianca(formData);
+
+  if (!dados.nome) {
+    return { ok: false, erro: "Informe o nome." };
+  }
+
+  const { error } = await supabase.from("criancas").update(dados).eq("id", id);
+
+  if (error) {
+    return { ok: false, erro: error.message };
+  }
+
+  await salvarVinculosPadrinhos(id, formData);
+
+  revalidatePath("/criancas");
+  revalidatePath("/padrinhos");
+  redirect("/criancas");
 }

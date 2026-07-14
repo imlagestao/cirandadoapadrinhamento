@@ -4,8 +4,8 @@ import LogoutButton from "@/components/LogoutButton";
 
 const NAV_ITEMS = [
   { href: "/", label: "Painel" },
-  { href: "/criancas", label: "Crianças" },
-  { href: "/padrinhos", label: "Padrinhos" },
+  { href: "/criancas", label: "Público atendido" },
+  { href: "/padrinhos", label: "Padrinho/Madrinha" },
   { href: "/extratos", label: "Extratos & Conciliação" },
   { href: "/relatorios", label: "Relatórios" },
 ] as const;

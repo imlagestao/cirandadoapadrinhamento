@@ -36,8 +36,9 @@ export default function ImportForm() {
           Importar planilha atual
         </p>
         <p className="text-xs text-muted">
-          Envie o .xlsx com as abas GERAL e Retirados para popular crianças e
-          padrinhos.
+          Envie o .xlsx com as abas de sala (ROSA, AMARELA, VERDE, AZUL,
+          CIRAND. MUNDO) e Retirados. Isso substitui o cadastro de crianças
+          atual pelo do arquivo enviado.
         </p>
       </div>
       <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center">
