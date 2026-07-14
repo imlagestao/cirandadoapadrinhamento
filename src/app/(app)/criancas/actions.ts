@@ -4,6 +4,7 @@ import ExcelJS from "exceljs";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { normalizaNome } from "@/lib/nomes";
 
 type StatusCrianca = "matriculado" | "retirado";
 
@@ -81,15 +82,6 @@ function cellInt(cell: ExcelJS.Cell | undefined): number | null {
     if (match) return parseInt(match[0], 10);
   }
   return null;
-}
-
-function normalizaNome(nome: string): string {
-  return nome
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, " ");
 }
 
 // Algumas crianças têm mais de um padrinho/madrinha, identificado na

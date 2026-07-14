@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import ImportarFichasForm from "./ImportarFichasForm";
 
 type PadrinhoRow = {
   id: string;
@@ -42,6 +43,8 @@ export default async function PadrinhosPage() {
           Novo cadastro
         </Link>
       </div>
+
+      <ImportarFichasForm />
 
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
         <table className="w-full min-w-[640px] text-left text-sm">

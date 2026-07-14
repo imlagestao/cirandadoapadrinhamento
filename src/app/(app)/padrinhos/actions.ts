@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { normalizaNome } from "@/lib/nomes";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -94,4 +95,204 @@ export async function alternarMensalidade(
 
   revalidatePath(`/padrinhos/${padrinhoId}`);
   return { ok: true };
+}
+
+const MESES_PT: Record<string, string> = {
+  jan: "01",
+  fev: "02",
+  mar: "03",
+  abr: "04",
+  mai: "05",
+  jun: "06",
+  jul: "07",
+  ago: "08",
+  set: "09",
+  out: "10",
+  nov: "11",
+  dez: "12",
+};
+
+function parseDataPtExtenso(texto: string): string | null {
+  const m = texto.match(/(\d{1,2})\s+de\s+(\w{3})\.?\s+de\s+(\d{4})/i);
+  if (!m) return null;
+  const mes = MESES_PT[m[2].toLowerCase()];
+  if (!mes) return null;
+  return `${m[3]}-${mes}-${m[1].padStart(2, "0")}`;
+}
+
+function parseDataBarras(texto: string): string | null {
+  const m = texto.match(/^(\d{2})\/(\d{2})\/(\d{2,4})$/);
+  if (!m) return null;
+  const dia = parseInt(m[1], 10);
+  const mes = parseInt(m[2], 10);
+  if (dia === 0 || mes === 0) return null;
+  let ano = parseInt(m[3], 10);
+  if (m[3].length === 2) {
+    const pivo = new Date().getFullYear() % 100;
+    ano = ano <= pivo ? 2000 + ano : 1900 + ano;
+  }
+  return `${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+}
+
+function extraiCampo(bloco: string, rotulo: string): string | null {
+  // [ \t]* (não \s*) para não atravessar a quebra de linha quando o campo
+  // está vazio no documento.
+  const re = new RegExp(`${rotulo}:[ \\t]*(.*)`);
+  const m = bloco.match(re);
+  if (!m) return null;
+  const v = m[1].trim();
+  return v || null;
+}
+
+type FichaGoogleDocs = {
+  nome: string;
+  nascimento: string | null;
+  cpf: string | null;
+  whatsapp: string | null;
+  endereco: string | null;
+  email: string | null;
+  padrinho_desde: string | null;
+};
+
+function parseFichasGoogleDocs(texto: string): FichaGoogleDocs[] {
+  const blocos = texto.split("👤PADRINHO/MADRINHA").slice(1);
+  const fichas: FichaGoogleDocs[] = [];
+
+  for (const bloco of blocos) {
+    const nome = extraiCampo(bloco, "Nome completo");
+    if (!nome) continue;
+
+    const nascimentoTexto = extraiCampo(bloco, "Nascimento");
+    const cpfTexto = extraiCampo(bloco, "CPF");
+    const desdeTexto = extraiCampo(bloco, "Padrinho\\/Madrinha desde");
+
+    fichas.push({
+      nome,
+      nascimento: nascimentoTexto ? parseDataBarras(nascimentoTexto) : null,
+      cpf:
+        cpfTexto && !/^x+$/i.test(cpfTexto.replace(/\s/g, ""))
+          ? cpfTexto
+          : null,
+      whatsapp: extraiCampo(bloco, "Whatsapp"),
+      endereco: extraiCampo(bloco, "Endereço"),
+      email: extraiCampo(bloco, "E-mail"),
+      padrinho_desde: desdeTexto ? parseDataPtExtenso(desdeTexto) : null,
+    });
+  }
+
+  return fichas;
+}
+
+function extraiIdDocumentoGoogle(url: string): string | null {
+  const m = url.match(/\/document\/d\/([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : null;
+}
+
+type ResultadoImportacaoFichas =
+  | { ok: false; erro: string }
+  | {
+      ok: true;
+      encontrados: number;
+      atualizados: number;
+      semMudanca: number;
+      naoEncontrados: string[];
+    };
+
+export async function importarFichasGoogleDocs(
+  formData: FormData,
+): Promise<ResultadoImportacaoFichas> {
+  const url = texto(formData, "url");
+  if (!url) {
+    return { ok: false, erro: "Cole o link do documento." };
+  }
+
+  const docId = extraiIdDocumentoGoogle(url);
+  if (!docId) {
+    return { ok: false, erro: "Não reconheci esse link do Google Docs." };
+  }
+
+  let textoDocumento: string;
+  try {
+    const resposta = await fetch(
+      `https://docs.google.com/document/d/${docId}/export?format=txt`,
+    );
+    if (!resposta.ok) {
+      return {
+        ok: false,
+        erro:
+          "Não consegui abrir o documento. Confira se o link está compartilhado como 'qualquer pessoa com o link pode ver'.",
+      };
+    }
+    textoDocumento = await resposta.text();
+  } catch {
+    return { ok: false, erro: "Falha ao baixar o documento." };
+  }
+
+  const fichas = parseFichasGoogleDocs(textoDocumento);
+  if (fichas.length === 0) {
+    return {
+      ok: false,
+      erro: "Nenhuma ficha encontrada nesse documento.",
+    };
+  }
+
+  const supabase = await createClient();
+  const { data: padrinhosExistentes, error: erroBusca } = await supabase
+    .from("padrinhos")
+    .select(
+      "id, nome, whatsapp, email, cpf, nascimento, endereco, padrinho_desde",
+    );
+  if (erroBusca) {
+    return { ok: false, erro: erroBusca.message };
+  }
+
+  const porNomeNormalizado = new Map(
+    (padrinhosExistentes ?? []).map((p) => [normalizaNome(p.nome), p]),
+  );
+
+  let atualizados = 0;
+  let semMudanca = 0;
+  const naoEncontrados: string[] = [];
+
+  for (const ficha of fichas) {
+    const existente = porNomeNormalizado.get(normalizaNome(ficha.nome));
+    if (!existente) {
+      naoEncontrados.push(ficha.nome);
+      continue;
+    }
+
+    const patch: Record<string, string> = {};
+    if (!existente.whatsapp && ficha.whatsapp) patch.whatsapp = ficha.whatsapp;
+    if (!existente.email && ficha.email) patch.email = ficha.email;
+    if (!existente.cpf && ficha.cpf) patch.cpf = ficha.cpf;
+    if (!existente.nascimento && ficha.nascimento)
+      patch.nascimento = ficha.nascimento;
+    if (!existente.endereco && ficha.endereco) patch.endereco = ficha.endereco;
+    if (!existente.padrinho_desde && ficha.padrinho_desde)
+      patch.padrinho_desde = ficha.padrinho_desde;
+
+    if (Object.keys(patch).length === 0) {
+      semMudanca++;
+      continue;
+    }
+
+    const { error: erroUpdate } = await supabase
+      .from("padrinhos")
+      .update(patch)
+      .eq("id", existente.id);
+    if (erroUpdate) {
+      return { ok: false, erro: erroUpdate.message };
+    }
+    atualizados++;
+  }
+
+  revalidatePath("/padrinhos");
+
+  return {
+    ok: true,
+    encontrados: fichas.length,
+    atualizados,
+    semMudanca,
+    naoEncontrados,
+  };
 }
