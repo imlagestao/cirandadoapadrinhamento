@@ -17,12 +17,20 @@ const ABAS = [
   { status: "retirado", label: "Retirados" },
 ] as const;
 
+// Ordem das salas como na planilha original (SALA ROSA, SALA AMARELA, ...).
+const ORDEM_SALAS = ["ROSA", "AMARELA", "VERDE", "AZUL", "CIRAND. MUNDO"];
+
+function extraiSala(turma: string | null): string {
+  if (!turma) return "Sem turma";
+  return turma.replace(/\s*\([^)]*\)\s*$/, "").trim() || "Sem turma";
+}
+
 export default async function CriancasPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; sala?: string }>;
 }) {
-  const { status: statusParam } = await searchParams;
+  const { status: statusParam, sala: salaParam } = await searchParams;
   const status = statusParam === "retirado" ? "retirado" : "matriculado";
 
   const supabase = await createClient();
@@ -44,15 +52,46 @@ export default async function CriancasPage({
     retirado: totalRetirados ?? 0,
   };
 
-  const { data } = await supabase
+  // Salas só existem entre os matriculados (a planilha original não separa
+  // os retirados por turma).
+  const { data: turmasMatriculados } = await supabase
+    .from("criancas")
+    .select("turma")
+    .eq("status", "matriculado");
+
+  const contagemPorSala = new Map<string, number>();
+  for (const row of turmasMatriculados ?? []) {
+    const sala = extraiSala(row.turma as string | null);
+    contagemPorSala.set(sala, (contagemPorSala.get(sala) ?? 0) + 1);
+  }
+  const salas = [...contagemPorSala.keys()].sort((a, b) => {
+    const ia = ORDEM_SALAS.indexOf(a);
+    const ib = ORDEM_SALAS.indexOf(b);
+    if (ia === -1 && ib === -1) return a.localeCompare(b);
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+
+  const salaSelecionada =
+    status === "matriculado" && salaParam && contagemPorSala.has(salaParam)
+      ? salaParam
+      : null;
+
+  let query = supabase
     .from("criancas")
     .select(
       "id, nome, turma, turno, comunidade, status, apadrinhamentos(padrinhos(nome))",
     )
     .eq("status", status)
     .order("nome")
-    .limit(50);
+    .limit(300);
 
+  if (salaSelecionada) {
+    query = query.ilike("turma", `${salaSelecionada}%`);
+  }
+
+  const { data } = await query;
   const criancas = data as unknown as CriancaRow[] | null;
 
   return (
@@ -84,6 +123,34 @@ export default async function CriancasPage({
           </Link>
         ))}
       </div>
+
+      {status === "matriculado" && (
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/criancas?status=matriculado"
+            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+              !salaSelecionada
+                ? "bg-brand-blue-dark text-white"
+                : "bg-brand-blue/10 text-brand-blue-dark hover:bg-brand-blue/20"
+            }`}
+          >
+            Todas ({contagens.matriculado})
+          </Link>
+          {salas.map((sala) => (
+            <Link
+              key={sala}
+              href={`/criancas?status=matriculado&sala=${encodeURIComponent(sala)}`}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                salaSelecionada === sala
+                  ? "bg-brand-blue-dark text-white"
+                  : "bg-brand-blue/10 text-brand-blue-dark hover:bg-brand-blue/20"
+              }`}
+            >
+              {sala} ({contagemPorSala.get(sala)})
+            </Link>
+          ))}
+        </div>
+      )}
 
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
         <table className="w-full min-w-[640px] text-left text-sm">
