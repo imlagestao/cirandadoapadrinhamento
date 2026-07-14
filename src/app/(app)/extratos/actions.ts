@@ -37,15 +37,18 @@ export async function importarExtrato(
     return { ok: false, erro: `Não consegui ler esse PDF (${mensagem}).` };
   }
 
-  const transacoesExtraidas =
+  // Só interessa identificar pagamentos de padrinhos/madrinhas — despesas
+  // do instituto (saídas) não entram no sistema.
+  const transacoesExtraidas = (
     banco === "Banco do Brasil"
       ? parseExtratoBB(texto)
-      : parseExtratoMercadoPago(texto);
+      : parseExtratoMercadoPago(texto)
+  ).filter((t) => t.tipo === "entrada");
 
   if (transacoesExtraidas.length === 0) {
     return {
       ok: false,
-      erro: "Nenhum lançamento encontrado nesse arquivo.",
+      erro: "Nenhuma entrada encontrada nesse arquivo.",
     };
   }
 
