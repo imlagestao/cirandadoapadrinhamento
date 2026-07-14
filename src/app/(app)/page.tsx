@@ -1,17 +1,45 @@
-const STATS = [
-  { label: "Crianças cadastradas", value: "—", accent: "green" },
-  { label: "Padrinhos ativos", value: "—", accent: "blue" },
-  { label: "Pendentes de conciliação", value: "—", accent: "pink" },
-  { label: "Possível inadimplência", value: "—", accent: "green" },
-] as const;
+import { createClient } from "@/lib/supabase/server";
 
-const ACCENT_CLASSES: Record<(typeof STATS)[number]["accent"], string> = {
-  green: "border-l-brand-green",
-  blue: "border-l-brand-blue",
-  pink: "border-l-brand-pink",
-};
+export default async function Home() {
+  const supabase = await createClient();
 
-export default function Home() {
+  const [{ count: totalCriancas }, { count: totalPadrinhos }, { count: pendentes }] =
+    await Promise.all([
+      supabase
+        .from("criancas")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "matriculado"),
+      supabase
+        .from("padrinhos")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "ativo"),
+      supabase
+        .from("transacoes")
+        .select("id", { count: "exact", head: true })
+        .eq("status_conciliacao", "pendente"),
+    ]);
+
+  const stats = [
+    {
+      label: "Crianças cadastradas",
+      value: totalCriancas ?? 0,
+      accent: "green",
+    },
+    { label: "Padrinhos ativos", value: totalPadrinhos ?? 0, accent: "blue" },
+    {
+      label: "Pendentes de conciliação",
+      value: pendentes ?? 0,
+      accent: "pink",
+    },
+    { label: "Possível inadimplência", value: "—", accent: "green" },
+  ] as const;
+
+  const accentClasses: Record<string, string> = {
+    green: "border-l-brand-green",
+    blue: "border-l-brand-blue",
+    pink: "border-l-brand-pink",
+  };
+
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-8">
       <div>
@@ -19,17 +47,16 @@ export default function Home() {
           Painel geral
         </h1>
         <p className="mt-1 text-sm text-muted">
-          Visão geral do apadrinhamento — dados chegam assim que o banco for
-          conectado.
+          Visão geral do apadrinhamento do Instituto Mãe Lalu.
         </p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {STATS.map((stat) => (
+        {stats.map((stat) => (
           <div
             key={stat.label}
             className={`rounded-xl border border-border border-l-4 bg-surface p-5 shadow-sm ${
-              ACCENT_CLASSES[stat.accent]
+              accentClasses[stat.accent]
             }`}
           >
             <p className="text-sm text-muted">{stat.label}</p>
@@ -38,11 +65,6 @@ export default function Home() {
             </p>
           </div>
         ))}
-      </div>
-
-      <div className="rounded-xl border border-dashed border-border bg-surface p-8 text-center text-sm text-muted">
-        Conecte o Supabase para começar a importar crianças, padrinhos e
-        extratos.
       </div>
     </div>
   );
