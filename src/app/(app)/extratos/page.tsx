@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { sugerirPadrinhos } from "@/lib/extratos/sugestao";
 import ConciliacaoItem from "./ConciliacaoItem";
+import CorrigirNomesButton from "./CorrigirNomesButton";
 import ImportarExtratoForm from "./ImportarExtratoForm";
 
 type TransacaoRow = {
@@ -46,6 +47,8 @@ export default async function ExtratosPage() {
       </div>
 
       <ImportarExtratoForm />
+
+      <CorrigirNomesButton />
 
       <div className="flex flex-col gap-3">
         {listaPendentes.map((t) => (

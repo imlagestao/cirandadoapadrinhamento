@@ -21,9 +21,15 @@ export function parseExtratoMercadoPago(texto: string): TransacaoExtraida[] {
     const valor = parseValorBR(valorTexto);
     if (isNaN(valor) || valor === 0) continue;
 
+    // "Pix recebido X" e "Transferência Pix recebida X" (a redação varia
+    // conforme o mês/versão do extrato) significam a mesma coisa.
     let nomeExtraido: string | null = null;
-    const recebido = descricao.match(/^Pix\s*recebido\s+(.+)/i);
-    const enviado = descricao.match(/^Pix\s*enviado\s+(.+)/i);
+    const recebido = descricao.match(
+      /^(?:Transferência\s+)?Pix\s*recebid[oa]\s+(.+)/i,
+    );
+    const enviado = descricao.match(
+      /^(?:Transferência\s+)?Pix\s*enviad[oa]\s+(.+)/i,
+    );
     if (recebido) nomeExtraido = recebido[1].trim();
     else if (enviado) nomeExtraido = enviado[1].trim();
 

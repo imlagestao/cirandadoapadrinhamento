@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import { PDFParse } from "pdf-parse";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import "@/lib/extratos/pdfWorker";
 import { parseExtratoBB } from "@/lib/extratos/bb";
 import { parseExtratoMercadoPago } from "@/lib/extratos/mercadoPago";
 
@@ -30,8 +31,10 @@ export async function importarExtrato(
     const parser = new PDFParse({ data: buffer });
     const resultado = await parser.getText();
     texto = resultado.text;
-  } catch {
-    return { ok: false, erro: "Não consegui ler esse PDF." };
+  } catch (erro) {
+    console.error("Falha ao ler PDF do extrato:", erro);
+    const mensagem = erro instanceof Error ? erro.message : String(erro);
+    return { ok: false, erro: `Não consegui ler esse PDF (${mensagem}).` };
   }
 
   const transacoesExtraidas =
@@ -151,6 +154,43 @@ export async function confirmarConciliacao(
   revalidatePath("/");
 
   return { ok: true };
+}
+
+// Correção única para lançamentos já importados antes do parser reconhecer
+// a variante "Transferência Pix recebida/enviada X" (só reconhecia
+// "Pix recebido/enviado X").
+export async function corrigirNomesTransacoes(): Promise<
+  { ok: false; erro: string } | { ok: true; corrigidas: number }
+> {
+  const supabase = await createClient();
+
+  const { data: transacoes, error: erroBusca } = await supabase
+    .from("transacoes")
+    .select("id, descricao")
+    .is("nome_extraido", null);
+  if (erroBusca) {
+    return { ok: false, erro: erroBusca.message };
+  }
+
+  let corrigidas = 0;
+  for (const t of transacoes ?? []) {
+    const m = (t.descricao as string).match(
+      /^(?:Transferência\s+)?Pix\s*(?:recebid[oa]|enviad[oa])\s+(.+)/i,
+    );
+    if (!m) continue;
+
+    const { error } = await supabase
+      .from("transacoes")
+      .update({ nome_extraido: m[1].trim() })
+      .eq("id", t.id);
+    if (error) {
+      return { ok: false, erro: error.message };
+    }
+    corrigidas++;
+  }
+
+  revalidatePath("/extratos");
+  return { ok: true, corrigidas };
 }
 
 export async function ignorarTransacao(
