@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import ImportForm from "./ImportForm";
 
@@ -11,15 +12,44 @@ type CriancaRow = {
   apadrinhamentos: { padrinhos: { nome: string } | null }[] | null;
 };
 
-export default async function CriancasPage() {
+const ABAS = [
+  { status: "matriculado", label: "Matriculados" },
+  { status: "retirado", label: "Retirados" },
+] as const;
+
+export default async function CriancasPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string }>;
+}) {
+  const { status: statusParam } = await searchParams;
+  const status = statusParam === "retirado" ? "retirado" : "matriculado";
+
   const supabase = await createClient();
 
-  const { data, count } = await supabase
+  const [{ count: totalMatriculados }, { count: totalRetirados }] =
+    await Promise.all([
+      supabase
+        .from("criancas")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "matriculado"),
+      supabase
+        .from("criancas")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "retirado"),
+    ]);
+
+  const contagens: Record<string, number> = {
+    matriculado: totalMatriculados ?? 0,
+    retirado: totalRetirados ?? 0,
+  };
+
+  const { data } = await supabase
     .from("criancas")
     .select(
       "id, nome, turma, turno, comunidade, status, apadrinhamentos(padrinhos(nome))",
-      { count: "exact" },
     )
+    .eq("status", status)
     .order("nome")
     .limit(50);
 
@@ -32,11 +62,28 @@ export default async function CriancasPage() {
           Crianças
         </h1>
         <p className="mt-1 text-sm text-muted">
-          {count ?? 0} crianças cadastradas.
+          {contagens.matriculado} matriculadas · {contagens.retirado}{" "}
+          retiradas.
         </p>
       </div>
 
       <ImportForm />
+
+      <div className="flex gap-2 border-b border-border">
+        {ABAS.map((aba) => (
+          <Link
+            key={aba.status}
+            href={`/criancas?status=${aba.status}`}
+            className={`rounded-t-lg px-4 py-2 text-sm font-medium transition-colors ${
+              status === aba.status
+                ? "border-b-2 border-brand-green-dark text-brand-green-dark"
+                : "text-muted hover:text-foreground"
+            }`}
+          >
+            {aba.label} ({contagens[aba.status]})
+          </Link>
+        ))}
+      </div>
 
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
         <table className="w-full min-w-[640px] text-left text-sm">
@@ -46,7 +93,6 @@ export default async function CriancasPage() {
               <th className="px-4 py-3 font-medium">Turma</th>
               <th className="px-4 py-3 font-medium">Comunidade</th>
               <th className="px-4 py-3 font-medium">Padrinho/Madrinha</th>
-              <th className="px-4 py-3 font-medium">Status</th>
             </tr>
           </thead>
           <tbody>
@@ -66,23 +112,12 @@ export default async function CriancasPage() {
                     .filter(Boolean)
                     .join(", ") || "—"}
                 </td>
-                <td className="px-4 py-3">
-                  <span
-                    className={`rounded-full px-2 py-1 text-xs font-medium ${
-                      crianca.status === "matriculado"
-                        ? "bg-brand-green/15 text-brand-green-dark"
-                        : "bg-brand-pink/15 text-brand-pink"
-                    }`}
-                  >
-                    {crianca.status}
-                  </span>
-                </td>
               </tr>
             ))}
             {(criancas ?? []).length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-muted">
-                  Nenhuma criança cadastrada ainda.
+                <td colSpan={4} className="px-4 py-8 text-center text-muted">
+                  Nenhuma criança nesta lista ainda.
                 </td>
               </tr>
             )}
