@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import CorrigirVinculosButton from "./CorrigirVinculosButton";
 import ImportarFichasForm from "./ImportarFichasForm";
 
 type PadrinhoRow = {
@@ -43,6 +44,8 @@ export default async function PadrinhosPage() {
           Novo cadastro
         </Link>
       </div>
+
+      <CorrigirVinculosButton />
 
       <ImportarFichasForm />
 

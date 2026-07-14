@@ -85,11 +85,12 @@ function cellInt(cell: ExcelJS.Cell | undefined): number | null {
 }
 
 // Algumas crianças têm mais de um padrinho/madrinha, identificado na
-// planilha como "NOME + NOME".
+// planilha como "NOME + NOME" ou "NOME / NOME" — os dois separadores
+// aparecem, sempre significando padrinhos diferentes.
 function splitPadrinhos(valor: string | null): string[] {
   if (!valor) return [];
   return valor
-    .split("+")
+    .split(/[+/]/)
     .map((v) => v.trim())
     .filter((v) => v.length > 0);
 }

@@ -188,6 +188,35 @@ function extraiIdDocumentoGoogle(url: string): string | null {
   return m ? m[1] : null;
 }
 
+// Mesma pessoa, grafada de formas diferentes no documento e no sistema
+// (apelido a mais, sobrenome a mais, acento). Confirmado manualmente pela
+// equipe — chave é o nome como está no Google Docs, valor é o nome como
+// está cadastrado no sistema.
+const ALIAS_NOMES: Record<string, string> = {
+  [normalizaNome("ADRIANA (VALÉRIA-ORACY)")]: normalizaNome("ADRIANA (VALÉRIA)"),
+  [normalizaNome("ALBA POLIANA DE SOUZA ARAUJO")]: normalizaNome(
+    "ALBA POLIANA DE SOUZA",
+  ),
+  [normalizaNome("CAROLINA MIRANDA DO ESPÍRITO SANTOS")]: normalizaNome(
+    "CAROLINA MIRANDA DO ESPÍRITO SANTO",
+  ),
+  [normalizaNome("LÁZARO EDMILSON BRITO E SILVA")]: normalizaNome(
+    "LÁZARO EDMILSON",
+  ),
+  [normalizaNome("LILIAM RUTH REZENDE (JAMILE)")]: normalizaNome(
+    "LILIAM RUTH REZENDE",
+  ),
+  [normalizaNome("MÁRCIO CATARINO CUNHA DOS SANTOS")]: normalizaNome(
+    "MARCIO CATARINO CUNHA",
+  ),
+  [normalizaNome("MICHELLE CÁSSIA DE AMORIM ALVES")]: normalizaNome(
+    "MICHELLE AMORIM",
+  ),
+  [normalizaNome("ORACY DOS SANTOS SUZARTE BERNARDO")]: normalizaNome(
+    "ORACY DOS SANTOS SUZARTE",
+  ),
+};
+
 type ResultadoImportacaoFichas =
   | { ok: false; erro: string }
   | {
@@ -255,7 +284,9 @@ export async function importarFichasGoogleDocs(
   const naoEncontrados: string[] = [];
 
   for (const ficha of fichas) {
-    const existente = porNomeNormalizado.get(normalizaNome(ficha.nome));
+    const existente =
+      porNomeNormalizado.get(normalizaNome(ficha.nome)) ??
+      porNomeNormalizado.get(ALIAS_NOMES[normalizaNome(ficha.nome)] ?? "");
     if (!existente) {
       naoEncontrados.push(ficha.nome);
       continue;
@@ -295,4 +326,88 @@ export async function importarFichasGoogleDocs(
     semMudanca,
     naoEncontrados,
   };
+}
+
+// Correção única: cadastros antigos como "GENIVAL NASCIMENTO / LÁZARO
+// EDMILSON" na verdade são duas (ou mais) pessoas diferentes que apadrinham
+// a(s) mesma(s) criança(s) — a planilha original só não separava por "/".
+// Separa cada nome em seu próprio cadastro (reaproveitando um já existente
+// com esse nome, se houver) e refaz os vínculos com as crianças.
+export async function corrigirVinculosCompostos(): Promise<
+  { ok: false; erro: string } | { ok: true; separados: number }
+> {
+  const supabase = await createClient();
+
+  const { data: padrinhos, error: erroPadrinhos } = await supabase
+    .from("padrinhos")
+    .select("id, nome");
+  if (erroPadrinhos) {
+    return { ok: false, erro: erroPadrinhos.message };
+  }
+
+  const porNomeNormalizado = new Map(
+    (padrinhos ?? []).map((p) => [normalizaNome(p.nome), p]),
+  );
+
+  const compostos = (padrinhos ?? []).filter((p) => /[+/]/.test(p.nome));
+  let separados = 0;
+
+  for (const composto of compostos) {
+    const nomes = (composto.nome as string)
+      .split(/[+/]/)
+      .map((n: string) => n.trim())
+      .filter((n: string) => n.length > 0);
+    if (nomes.length < 2) continue;
+
+    const { data: vinculos, error: erroVinculos } = await supabase
+      .from("apadrinhamentos")
+      .select("crianca_id")
+      .eq("padrinho_id", composto.id);
+    if (erroVinculos) {
+      return { ok: false, erro: erroVinculos.message };
+    }
+
+    for (const nome of nomes) {
+      const chave = normalizaNome(nome);
+      let alvo = porNomeNormalizado.get(chave);
+
+      if (!alvo) {
+        const { data: novo, error: erroNovo } = await supabase
+          .from("padrinhos")
+          .insert({ nome })
+          .select("id, nome")
+          .single();
+        if (erroNovo) {
+          return { ok: false, erro: erroNovo.message };
+        }
+        alvo = novo;
+        porNomeNormalizado.set(chave, novo);
+      }
+
+      for (const { crianca_id } of vinculos ?? []) {
+        const { data: existente } = await supabase
+          .from("apadrinhamentos")
+          .select("id")
+          .eq("crianca_id", crianca_id)
+          .eq("padrinho_id", alvo.id)
+          .maybeSingle();
+        if (existente) continue;
+
+        const { error: erroLink } = await supabase
+          .from("apadrinhamentos")
+          .insert({ crianca_id, padrinho_id: alvo.id });
+        if (erroLink) {
+          return { ok: false, erro: erroLink.message };
+        }
+      }
+    }
+
+    await supabase.from("padrinhos").delete().eq("id", composto.id);
+    separados++;
+  }
+
+  revalidatePath("/padrinhos");
+  revalidatePath("/criancas");
+
+  return { ok: true, separados };
 }
