@@ -76,6 +76,20 @@ export async function atualizarPadrinho(
   redirect(`/padrinhos/${id}`);
 }
 
+export async function excluirPadrinho(
+  id: string,
+): Promise<{ ok: false; erro: string } | undefined> {
+  const supabase = await createClient();
+
+  const { error } = await supabase.from("padrinhos").delete().eq("id", id);
+  if (error) {
+    return { ok: false, erro: error.message };
+  }
+
+  revalidatePath("/padrinhos");
+  redirect("/padrinhos");
+}
+
 export async function alternarMensalidade(
   padrinhoId: string,
   ano: number,

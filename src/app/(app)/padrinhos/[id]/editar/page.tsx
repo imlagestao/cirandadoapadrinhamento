@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { atualizarPadrinho } from "../../actions";
+import ExcluirPadrinhoButton from "../../ExcluirPadrinhoButton";
 import PadrinhoForm from "../../PadrinhoForm";
 
 export default async function EditarPadrinhoPage({
@@ -32,6 +33,8 @@ export default async function EditarPadrinhoPage({
       </div>
 
       <PadrinhoForm valoresIniciais={padrinho} acao={atualizarComId} />
+
+      <ExcluirPadrinhoButton id={id} nome={padrinho.nome} />
     </div>
   );
 }
