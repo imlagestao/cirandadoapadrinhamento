@@ -231,3 +231,20 @@ export async function ignorarTransacao(
   revalidatePath("/extratos");
   return { ok: true };
 }
+
+export async function reverterIgnorado(
+  transacaoId: string,
+): Promise<{ ok: boolean; erro?: string }> {
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from("transacoes")
+    .update({ status_conciliacao: "pendente" })
+    .eq("id", transacaoId);
+  if (error) {
+    return { ok: false, erro: error.message };
+  }
+
+  revalidatePath("/extratos");
+  return { ok: true };
+}
