@@ -70,6 +70,9 @@ export async function importarExtrato(
     valor: t.valor,
     tipo: t.tipo,
     arquivo_origem: file.name,
+    // Sem nenhum nome extraído (tarifa, aplicação, transferência externa
+    // etc.) não tem como vincular a um padrinho — nem entra na fila.
+    status_conciliacao: t.nomeExtraido ? "pendente" : "ignorado",
     hash: crypto
       .createHash("sha256")
       .update(`${banco}|${t.chaveUnica}`)
@@ -161,39 +164,55 @@ export async function confirmarConciliacao(
 
 // Correção única para lançamentos já importados antes do parser reconhecer
 // a variante "Transferência Pix recebida/enviada X" (só reconhecia
-// "Pix recebido/enviado X").
+// "Pix recebido/enviado X"), e para tirar da fila os que continuam sem
+// nenhum nome (tarifa, aplicação, transferência externa etc. — não dá
+// pra vincular a um padrinho mesmo).
 export async function corrigirNomesTransacoes(): Promise<
-  { ok: false; erro: string } | { ok: true; corrigidas: number }
+  | { ok: false; erro: string }
+  | { ok: true; corrigidas: number; semNomeIgnoradas: number }
 > {
   const supabase = await createClient();
 
   const { data: transacoes, error: erroBusca } = await supabase
     .from("transacoes")
     .select("id, descricao")
-    .is("nome_extraido", null);
+    .is("nome_extraido", null)
+    .eq("status_conciliacao", "pendente");
   if (erroBusca) {
     return { ok: false, erro: erroBusca.message };
   }
 
   let corrigidas = 0;
+  let semNomeIgnoradas = 0;
   for (const t of transacoes ?? []) {
     const m = (t.descricao as string).match(
       /^(?:Transferência\s+)?Pix\s*(?:recebid[oa]|enviad[oa])\s+(.+)/i,
     );
-    if (!m) continue;
+
+    if (m) {
+      const { error } = await supabase
+        .from("transacoes")
+        .update({ nome_extraido: m[1].trim() })
+        .eq("id", t.id);
+      if (error) {
+        return { ok: false, erro: error.message };
+      }
+      corrigidas++;
+      continue;
+    }
 
     const { error } = await supabase
       .from("transacoes")
-      .update({ nome_extraido: m[1].trim() })
+      .update({ status_conciliacao: "ignorado" })
       .eq("id", t.id);
     if (error) {
       return { ok: false, erro: error.message };
     }
-    corrigidas++;
+    semNomeIgnoradas++;
   }
 
   revalidatePath("/extratos");
-  return { ok: true, corrigidas };
+  return { ok: true, corrigidas, semNomeIgnoradas };
 }
 
 export async function ignorarTransacao(

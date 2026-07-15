@@ -13,7 +13,7 @@ export default function CorrigirNomesButton() {
       const res = await corrigirNomesTransacoes();
       setResultado(
         res.ok
-          ? `${res.corrigidas} lançamento(s) corrigido(s).`
+          ? `${res.corrigidas} corrigido(s) · ${res.semNomeIgnoradas} sem nome removido(s) da fila.`
           : (res.erro ?? "Erro."),
       );
     });
