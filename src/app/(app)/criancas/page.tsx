@@ -7,10 +7,18 @@ type CriancaRow = {
   nome: string;
   turma: string | null;
   turno: string | null;
+  idade: number | null;
+  nascimento: string | null;
   comunidade: string | null;
   status: string;
   apadrinhamentos: { padrinhos: { id: string; nome: string } | null }[] | null;
 };
+
+function formataData(iso: string | null): string {
+  if (!iso) return "—";
+  const [ano, mes, dia] = iso.split("-");
+  return `${dia}/${mes}/${ano}`;
+}
 
 const ABAS = [
   { status: "matriculado", label: "Matriculados" },
@@ -81,7 +89,7 @@ export default async function CriancasPage({
   let query = supabase
     .from("criancas")
     .select(
-      "id, nome, turma, turno, comunidade, status, apadrinhamentos(padrinhos(id, nome))",
+      "id, nome, turma, turno, idade, nascimento, comunidade, status, apadrinhamentos(padrinhos(id, nome))",
     )
     .eq("status", status)
     .order("nome")
@@ -165,6 +173,8 @@ export default async function CriancasPage({
           <thead className="border-b border-border text-xs uppercase text-muted">
             <tr>
               <th className="px-4 py-3 font-medium">Nome</th>
+              <th className="px-4 py-3 font-medium">Nascimento</th>
+              <th className="px-4 py-3 font-medium">Idade</th>
               <th className="px-4 py-3 font-medium">Turma</th>
               <th className="px-4 py-3 font-medium">Comunidade</th>
               <th className="px-4 py-3 font-medium">Padrinho/Madrinha</th>
@@ -178,25 +188,31 @@ export default async function CriancasPage({
                   {crianca.nome}
                 </td>
                 <td className="px-4 py-3 text-muted">
+                  {formataData(crianca.nascimento)}
+                </td>
+                <td className="px-4 py-3 text-muted">
+                  {crianca.idade ? `${crianca.idade} anos` : "—"}
+                </td>
+                <td className="px-4 py-3 text-muted">
                   {crianca.turma}
                   {crianca.turno ? ` (${crianca.turno})` : ""}
                 </td>
                 <td className="px-4 py-3 text-muted">{crianca.comunidade}</td>
                 <td className="px-4 py-3 text-muted">
                   {crianca.apadrinhamentos?.some((a) => a.padrinhos) ? (
-                    crianca.apadrinhamentos
-                      .filter((a) => a.padrinhos)
-                      .map((a, i, arr) => (
-                        <span key={a.padrinhos!.id}>
+                    <div className="flex flex-col gap-0.5">
+                      {crianca.apadrinhamentos
+                        .filter((a) => a.padrinhos)
+                        .map((a) => (
                           <Link
+                            key={a.padrinhos!.id}
                             href={`/padrinhos/${a.padrinhos!.id}`}
                             className="text-brand-blue-dark hover:underline"
                           >
                             {a.padrinhos!.nome}
                           </Link>
-                          {i < arr.length - 1 ? ", " : ""}
-                        </span>
-                      ))
+                        ))}
+                    </div>
                   ) : (
                     "—"
                   )}
@@ -213,7 +229,7 @@ export default async function CriancasPage({
             ))}
             {(criancas ?? []).length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-muted">
+                <td colSpan={7} className="px-4 py-8 text-center text-muted">
                   Nenhuma criança nesta lista ainda.
                 </td>
               </tr>

@@ -121,7 +121,7 @@ export default function ConciliacaoItem({
           disabled={isPending}
           className="rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted transition-colors hover:bg-background disabled:opacity-60"
         >
-          Não é padrinho
+          Não é apadrinhamento
         </button>
       </div>
       {erro && <p className="text-xs text-red-600">{erro}</p>}

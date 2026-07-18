@@ -7,6 +7,11 @@ import { createClient } from "@/lib/supabase/server";
 import "@/lib/extratos/pdfWorker";
 import { parseExtratoBB } from "@/lib/extratos/bb";
 import { parseExtratoMercadoPago } from "@/lib/extratos/mercadoPago";
+import {
+  VALOR_MAXIMO_APADRINHAMENTO,
+  VALOR_MINIMO_APADRINHAMENTO,
+} from "@/lib/extratos/tipos";
+import { normalizaParaComparacao } from "@/lib/extratos/sugestao";
 
 type ResultadoImportacaoExtrato =
   | { ok: false; erro: string }
@@ -71,8 +76,15 @@ export async function importarExtrato(
     tipo: t.tipo,
     arquivo_origem: file.name,
     // Sem nenhum nome extraído (tarifa, aplicação, transferência externa
-    // etc.) não tem como vincular a um padrinho — nem entra na fila.
-    status_conciliacao: t.nomeExtraido ? "pendente" : "ignorado",
+    // etc.) não tem como vincular a um padrinho — nem entra na fila. Valores
+    // fora da faixa esperada de mensalidade (baixo demais ou alto demais)
+    // também não costumam ser apadrinhamento.
+    status_conciliacao:
+      t.nomeExtraido &&
+      t.valor >= VALOR_MINIMO_APADRINHAMENTO &&
+      t.valor <= VALOR_MAXIMO_APADRINHAMENTO
+        ? "pendente"
+        : "ignorado",
     hash: crypto
       .createHash("sha256")
       .update(`${banco}|${t.chaveUnica}`)
@@ -106,7 +118,7 @@ export async function confirmarConciliacao(
 
   const { data: transacao, error: erroTransacao } = await supabase
     .from("transacoes")
-    .select("data")
+    .select("data, nome_extraido")
     .eq("id", transacaoId)
     .single();
   if (erroTransacao || !transacao) {
@@ -129,6 +141,18 @@ export async function confirmarConciliacao(
     );
   if (erroConciliacao) {
     return { ok: false, erro: erroConciliacao.message };
+  }
+
+  // Memoriza esse nome extraído -> padrinho, pra sugerir automaticamente com
+  // 100% de confiança da próxima vez que o mesmo nome aparecer num extrato.
+  if (transacao.nome_extraido) {
+    const nomeNormalizado = normalizaParaComparacao(transacao.nome_extraido);
+    if (nomeNormalizado) {
+      await supabase.from("apelidos_transacao").upsert(
+        { nome_normalizado: nomeNormalizado, padrinho_id: padrinhoId },
+        { onConflict: "nome_normalizado" },
+      );
+    }
   }
 
   const { error: erroStatus } = await supabase
@@ -186,7 +210,7 @@ export async function corrigirNomesTransacoes(): Promise<
   let semNomeIgnoradas = 0;
   for (const t of transacoes ?? []) {
     const m = (t.descricao as string).match(
-      /^(?:Transferência\s+)?Pix\s*(?:recebid[oa]|enviad[oa])\s+(.+)/i,
+      /(?:Transferência\s+)?Pix\s*(?:recebid[oa]|enviad[oa])\s+(.+)/i,
     );
 
     if (m) {
@@ -213,6 +237,41 @@ export async function corrigirNomesTransacoes(): Promise<
 
   revalidatePath("/extratos");
   return { ok: true, corrigidas, semNomeIgnoradas };
+}
+
+// Correção única para lançamentos já importados antes da regra de faixa de
+// valor — tira da fila de pendentes os que ficaram lá fora da faixa
+// [VALOR_MINIMO_APADRINHAMENTO, VALOR_MAXIMO_APADRINHAMENTO] (não costumam
+// ser mensalidade de apadrinhamento).
+export async function ignorarValoresForaDaFaixa(): Promise<
+  { ok: false; erro: string } | { ok: true; ignoradas: number }
+> {
+  const supabase = await createClient();
+
+  const { data: transacoes, error: erroBusca } = await supabase
+    .from("transacoes")
+    .select("id")
+    .eq("status_conciliacao", "pendente")
+    .or(
+      `valor.lt.${VALOR_MINIMO_APADRINHAMENTO},valor.gt.${VALOR_MAXIMO_APADRINHAMENTO}`,
+    );
+  if (erroBusca) {
+    return { ok: false, erro: erroBusca.message };
+  }
+
+  const ids = (transacoes ?? []).map((t) => t.id);
+  if (ids.length > 0) {
+    const { error } = await supabase
+      .from("transacoes")
+      .update({ status_conciliacao: "ignorado" })
+      .in("id", ids);
+    if (error) {
+      return { ok: false, erro: error.message };
+    }
+  }
+
+  revalidatePath("/extratos");
+  return { ok: true, ignoradas: ids.length };
 }
 
 export async function ignorarTransacao(

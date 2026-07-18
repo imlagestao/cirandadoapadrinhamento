@@ -301,6 +301,70 @@ async function salvarVinculosPadrinhos(
   }
 }
 
+export async function vincularPadrinhoRapido(
+  criancaId: string,
+  padrinhoId: string,
+): Promise<{ ok: boolean; erro?: string }> {
+  if (!padrinhoId) {
+    return { ok: false, erro: "Selecione um padrinho/madrinha." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("apadrinhamentos")
+    .insert({ crianca_id: criancaId, padrinho_id: padrinhoId });
+
+  if (error) {
+    return { ok: false, erro: error.message };
+  }
+
+  revalidatePath("/criancas");
+  revalidatePath("/criancas/sem-padrinho");
+  revalidatePath("/padrinhos");
+  revalidatePath("/");
+
+  return { ok: true };
+}
+
+// Quando o padrinho/madrinha ainda não existe no cadastro — cria o registro
+// (com os dados básicos que já dá pra preencher aqui; whatsapp/e-mail/etc.
+// ficam para depois, na ficha do padrinho) e já vincula à criança, num só passo.
+export async function criarPadrinhoEVincular(
+  criancaId: string,
+  nomePadrinho: string,
+): Promise<{ ok: boolean; erro?: string }> {
+  const nome = nomePadrinho.trim();
+  if (!nome) {
+    return { ok: false, erro: "Informe o nome do padrinho/madrinha." };
+  }
+
+  const supabase = await createClient();
+  const { data: padrinho, error: erroPadrinho } = await supabase
+    .from("padrinhos")
+    .insert({ nome })
+    .select("id")
+    .single();
+
+  if (erroPadrinho) {
+    return { ok: false, erro: erroPadrinho.message };
+  }
+
+  const { error: erroVinculo } = await supabase
+    .from("apadrinhamentos")
+    .insert({ crianca_id: criancaId, padrinho_id: padrinho.id });
+
+  if (erroVinculo) {
+    return { ok: false, erro: erroVinculo.message };
+  }
+
+  revalidatePath("/criancas");
+  revalidatePath("/criancas/sem-padrinho");
+  revalidatePath("/padrinhos");
+  revalidatePath("/");
+
+  return { ok: true };
+}
+
 export async function criarCrianca(
   formData: FormData,
 ): Promise<{ ok: false; erro: string } | undefined> {

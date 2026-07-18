@@ -176,10 +176,17 @@ export default async function PadrinhosPage({
                     .join(" · ") || "—"}
                 </td>
                 <td className="px-4 py-3 text-muted">
-                  {padrinho.apadrinhamentos
-                    ?.map((a) => a.criancas?.nome)
-                    .filter(Boolean)
-                    .join(", ") || "—"}
+                  {padrinho.apadrinhamentos?.some((a) => a.criancas) ? (
+                    <div className="flex flex-col gap-0.5">
+                      {padrinho.apadrinhamentos
+                        .filter((a) => a.criancas)
+                        .map((a) => (
+                          <span key={a.criancas!.nome}>{a.criancas!.nome}</span>
+                        ))}
+                    </div>
+                  ) : (
+                    "—"
+                  )}
                 </td>
                 <td className="px-4 py-3">
                   <span className="rounded-full bg-brand-green/15 px-2 py-1 text-xs font-medium text-brand-green-dark">

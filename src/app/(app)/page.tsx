@@ -1,23 +1,42 @@
 import { createClient } from "@/lib/supabase/server";
+import { getResumoInadimplencia } from "@/lib/inadimplencia";
 
 export default async function Home() {
   const supabase = await createClient();
 
-  const [{ count: totalCriancas }, { count: totalPadrinhos }, { count: pendentes }] =
-    await Promise.all([
-      supabase
-        .from("criancas")
-        .select("id", { count: "exact", head: true })
-        .eq("status", "matriculado"),
-      supabase
-        .from("padrinhos")
-        .select("id", { count: "exact", head: true })
-        .eq("status", "ativo"),
-      supabase
-        .from("transacoes")
-        .select("id", { count: "exact", head: true })
-        .eq("status_conciliacao", "pendente"),
-    ]);
+  const hoje = new Date();
+
+  const [
+    { count: totalCriancas },
+    { count: totalPadrinhos },
+    { count: pendentes },
+    { data: criancasMatriculadas },
+    resumoInadimplencia,
+  ] = await Promise.all([
+    supabase
+      .from("criancas")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "matriculado"),
+    supabase
+      .from("padrinhos")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "ativo"),
+    supabase
+      .from("transacoes")
+      .select("id", { count: "exact", head: true })
+      .eq("status_conciliacao", "pendente"),
+    supabase
+      .from("criancas")
+      .select("id, apadrinhamentos(id)")
+      .eq("status", "matriculado"),
+    getResumoInadimplencia(hoje.getFullYear(), hoje.getMonth() + 1),
+  ]);
+
+  const semApadrinhar = (
+    (criancasMatriculadas ?? []) as unknown as {
+      apadrinhamentos: { id: string }[] | null;
+    }[]
+  ).filter((c) => !c.apadrinhamentos || c.apadrinhamentos.length === 0).length;
 
   const stats = [
     {
@@ -27,11 +46,20 @@ export default async function Home() {
     },
     { label: "Padrinhos ativos", value: totalPadrinhos ?? 0, accent: "blue" },
     {
+      label: "Crianças sem apadrinhar",
+      value: semApadrinhar,
+      accent: "pink",
+    },
+    {
       label: "Pendentes de conciliação",
       value: pendentes ?? 0,
       accent: "pink",
     },
-    { label: "Possível inadimplência", value: "—", accent: "green" },
+    {
+      label: "Possível inadimplência (mês atual)",
+      value: resumoInadimplencia.inadimplentes.length,
+      accent: "green",
+    },
   ] as const;
 
   const accentClasses: Record<string, string> = {
@@ -51,7 +79,7 @@ export default async function Home() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {stats.map((stat) => (
           <div
             key={stat.label}

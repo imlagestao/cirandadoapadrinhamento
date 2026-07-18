@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { sugerirPadrinhos } from "@/lib/extratos/sugestao";
 import ConciliacaoItem from "./ConciliacaoItem";
 import CorrigirNomesButton from "./CorrigirNomesButton";
+import IgnorarValoresBaixosButton from "./IgnorarValoresBaixosButton";
 import ImportarExtratoForm from "./ImportarExtratoForm";
 import ReverterIgnoradoButton from "./ReverterIgnoradoButton";
 
@@ -13,6 +14,16 @@ type TransacaoRow = {
   valor: number;
 };
 
+type CoberturaRow = {
+  data: string;
+  contas_bancarias: { nome: string } | null;
+};
+
+const MESES_ABREV = [
+  "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
+  "Jul", "Ago", "Set", "Out", "Nov", "Dez",
+];
+
 export default async function ExtratosPage() {
   const supabase = await createClient();
 
@@ -21,6 +32,8 @@ export default async function ExtratosPage() {
     { data: pendentes },
     { count: conciliadas },
     { data: ignorados },
+    { data: cobertura },
+    { data: apelidos },
   ] = await Promise.all([
     supabase.from("padrinhos").select("id, nome").order("nome"),
     supabase
@@ -40,11 +53,39 @@ export default async function ExtratosPage() {
       .eq("status_conciliacao", "ignorado")
       .order("data", { ascending: false })
       .limit(300),
+    supabase
+      .from("transacoes")
+      .select("data, contas_bancarias(nome)")
+      .eq("tipo", "entrada"),
+    supabase.from("apelidos_transacao").select("nome_normalizado, padrinho_id"),
   ]);
 
   const listaPadrinhos = padrinhos ?? [];
   const listaPendentes = (pendentes ?? []) as TransacaoRow[];
   const listaIgnorados = (ignorados ?? []) as TransacaoRow[];
+  const mapaApelidos = new Map(
+    (apelidos ?? []).map((a) => [a.nome_normalizado as string, a.padrinho_id as string]),
+  );
+
+  const bancos = [
+    ...new Set(
+      ((cobertura ?? []) as unknown as CoberturaRow[])
+        .map((t) => t.contas_bancarias?.nome)
+        .filter((n): n is string => Boolean(n)),
+    ),
+  ].sort();
+
+  const contagemPorMesBanco = new Map<string, number>();
+  const mesesComDados = new Set<string>();
+  for (const t of (cobertura ?? []) as unknown as CoberturaRow[]) {
+    const banco = t.contas_bancarias?.nome;
+    if (!banco) continue;
+    const mes = t.data.slice(0, 7);
+    mesesComDados.add(mes);
+    const chave = `${mes}|${banco}`;
+    contagemPorMesBanco.set(chave, (contagemPorMesBanco.get(chave) ?? 0) + 1);
+  }
+  const meses = [...mesesComDados].sort();
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
@@ -58,9 +99,56 @@ export default async function ExtratosPage() {
         </p>
       </div>
 
+      {meses.length > 0 && (
+        <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+          <div className="bg-brand-blue-dark px-5 py-2 text-sm font-semibold text-white">
+            Cobertura de extratos importados (lançamentos por mês)
+          </div>
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-border text-xs uppercase text-muted">
+              <tr>
+                <th className="px-4 py-2 font-medium">Mês</th>
+                {bancos.map((banco) => (
+                  <th key={banco} className="px-4 py-2 font-medium">
+                    {banco}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {meses.map((mes) => {
+                const [ano, mesNum] = mes.split("-");
+                const label = `${MESES_ABREV[Number(mesNum) - 1]}/${ano}`;
+                return (
+                  <tr key={mes} className="border-b border-border last:border-0">
+                    <td className="px-4 py-2 font-medium text-foreground">
+                      {label}
+                    </td>
+                    {bancos.map((banco) => {
+                      const qtd = contagemPorMesBanco.get(`${mes}|${banco}`) ?? 0;
+                      return (
+                        <td
+                          key={banco}
+                          className={`px-4 py-2 ${qtd === 0 ? "text-red-500" : "text-muted"}`}
+                        >
+                          {qtd === 0 ? "sem dados" : `${qtd} lançamentos`}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <ImportarExtratoForm />
 
-      <CorrigirNomesButton />
+      <div className="flex flex-wrap gap-2">
+        <CorrigirNomesButton />
+        <IgnorarValoresBaixosButton />
+      </div>
 
       <div className="flex flex-col gap-3">
         {listaPendentes.map((t) => (
@@ -75,7 +163,7 @@ export default async function ExtratosPage() {
             }}
             sugestoes={
               t.nome_extraido
-                ? sugerirPadrinhos(t.nome_extraido, listaPadrinhos)
+                ? sugerirPadrinhos(t.nome_extraido, listaPadrinhos, mapaApelidos)
                 : []
             }
             padrinhosDisponiveis={listaPadrinhos}
@@ -91,7 +179,7 @@ export default async function ExtratosPage() {
       {listaIgnorados.length > 0 && (
         <div className="flex flex-col gap-3">
           <h2 className="text-sm font-semibold text-foreground">
-            Marcados como &quot;não é padrinho&quot;
+            Marcados como &quot;não é apadrinhamento&quot;
           </h2>
           <p className="text-xs text-muted">
             Inclui os sem nome (ignorados automaticamente) e os que alguém

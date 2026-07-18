@@ -8,6 +8,7 @@ type CriancaLigada = {
   id: string;
   nome: string;
   idade: number | null;
+  nascimento: string | null;
   turma: string | null;
   comunidade: string | null;
 };
@@ -29,7 +30,7 @@ export default async function FichaPadrinhoPage({
   const { data: padrinho } = await supabase
     .from("padrinhos")
     .select(
-      "id, nome, whatsapp, email, cpf, nascimento, endereco, padrinho_desde, pendencia, status, observacoes, apadrinhamentos(criancas(id, nome, idade, turma, comunidade))",
+      "id, nome, whatsapp, email, cpf, nascimento, endereco, padrinho_desde, pendencia, status, observacoes, apadrinhamentos(criancas(id, nome, idade, nascimento, turma, comunidade))",
     )
     .eq("id", id)
     .single();
@@ -100,6 +101,7 @@ export default async function FichaPadrinhoPage({
           <thead className="border-b border-border text-xs uppercase text-muted">
             <tr>
               <th className="px-5 py-2 font-medium">Nome</th>
+              <th className="px-5 py-2 font-medium">Nascimento</th>
               <th className="px-5 py-2 font-medium">Idade</th>
               <th className="px-5 py-2 font-medium">Turma</th>
               <th className="px-5 py-2 font-medium">Local</th>
@@ -112,6 +114,9 @@ export default async function FichaPadrinhoPage({
                   {crianca.nome}
                 </td>
                 <td className="px-5 py-2 text-muted">
+                  {formataData(crianca.nascimento)}
+                </td>
+                <td className="px-5 py-2 text-muted">
                   {crianca.idade ? `${crianca.idade} anos` : "—"}
                 </td>
                 <td className="px-5 py-2 text-muted">{crianca.turma ?? "—"}</td>
@@ -122,7 +127,7 @@ export default async function FichaPadrinhoPage({
             ))}
             {afilhados.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-5 py-6 text-center text-muted">
+                <td colSpan={5} className="px-5 py-6 text-center text-muted">
                   Nenhum afilhado vinculado ainda.
                 </td>
               </tr>

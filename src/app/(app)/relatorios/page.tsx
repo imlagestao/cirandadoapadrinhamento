@@ -6,8 +6,7 @@ export default function RelatoriosPage() {
           Relatórios
         </h1>
         <p className="mt-1 text-sm text-muted">
-          Inadimplência, totais por turma/comunidade e exportação para
-          prestação de contas.
+          Exportação de dados para prestação de contas.
         </p>
       </div>
 
@@ -28,10 +27,6 @@ export default function RelatoriosPage() {
         >
           Baixar backup
         </a>
-      </div>
-
-      <div className="rounded-xl border border-dashed border-border bg-surface p-12 text-center text-sm text-muted">
-        Relatórios de inadimplência e totais chegam na próxima etapa.
       </div>
     </div>
   );
