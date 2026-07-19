@@ -3,6 +3,7 @@ import { sugerirPadrinhos } from "@/lib/extratos/sugestao";
 import ApagarIgnoradosButton from "./ApagarIgnoradosButton";
 import ConciliacaoItem from "./ConciliacaoItem";
 import CorrigirMensalidadesButton from "./CorrigirMensalidadesButton";
+import CorrigirMensalidadesFaltandoButton from "./CorrigirMensalidadesFaltandoButton";
 import CorrigirNomesButton from "./CorrigirNomesButton";
 import IgnorarValoresBaixosButton from "./IgnorarValoresBaixosButton";
 import ImportarExtratoForm from "./ImportarExtratoForm";
@@ -154,6 +155,7 @@ export default async function ExtratosPage() {
         <CorrigirNomesButton />
         <IgnorarValoresBaixosButton />
         <CorrigirMensalidadesButton />
+        <CorrigirMensalidadesFaltandoButton />
       </div>
 
       <div className="flex flex-col gap-3">

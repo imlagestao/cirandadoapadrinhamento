@@ -329,6 +329,72 @@ export async function apagarIgnorados(): Promise<
   return { ok: true, apagadas: data?.length ?? 0 };
 }
 
+// Verificação/correção geral: toda transação conciliada deveria ter uma
+// mensalidade (padrinho+ano+mes) marcada como paga. Se alguma ficou pra
+// trás (por qualquer motivo), essa função encontra e conserta.
+export async function corrigirMensalidadesFaltando(): Promise<
+  { ok: false; erro: string } | { ok: true; corrigidas: number }
+> {
+  const supabase = await createClient();
+
+  const { data: conciliados, error: erroTransacoes } = await supabase
+    .from("transacoes")
+    .select("id, data")
+    .eq("status_conciliacao", "conciliado");
+  if (erroTransacoes) {
+    return { ok: false, erro: erroTransacoes.message };
+  }
+
+  const dataPorTransacao = new Map(
+    (conciliados ?? []).map((t) => [t.id as string, t.data as string]),
+  );
+  const idsConciliados = [...dataPorTransacao.keys()];
+  if (idsConciliados.length === 0) {
+    return { ok: true, corrigidas: 0 };
+  }
+
+  const { data: conciliacoes, error: erroConciliacoes } = await supabase
+    .from("conciliacoes")
+    .select("transacao_id, padrinho_id")
+    .in("transacao_id", idsConciliados);
+  if (erroConciliacoes) {
+    return { ok: false, erro: erroConciliacoes.message };
+  }
+
+  const linhas = (conciliacoes ?? [])
+    .map((c) => {
+      const data = dataPorTransacao.get(c.transacao_id as string);
+      if (!data) return null;
+      const [ano, mes] = data.split("-");
+      return {
+        padrinho_id: c.padrinho_id as string,
+        ano: Number(ano),
+        mes: Number(mes),
+        pago: true,
+      };
+    })
+    .filter((l): l is NonNullable<typeof l> => l !== null);
+
+  const unicas = [
+    ...new Map(
+      linhas.map((l) => [`${l.padrinho_id}-${l.ano}-${l.mes}`, l]),
+    ).values(),
+  ];
+
+  if (unicas.length > 0) {
+    const { error: erroUpsert } = await supabase
+      .from("mensalidades")
+      .upsert(unicas, { onConflict: "padrinho_id,ano,mes" });
+    if (erroUpsert) {
+      return { ok: false, erro: erroUpsert.message };
+    }
+  }
+
+  revalidatePath("/extratos");
+  revalidatePath("/adimplencia");
+  return { ok: true, corrigidas: unicas.length };
+}
+
 // Correção única para meses desmarcados antes da mensalidade voltar a
 // desfazer a conciliação (bug já corrigido) — acha mensalidades marcadas
 // como "não pago" cuja transação ainda ficou presa como "conciliado" e
