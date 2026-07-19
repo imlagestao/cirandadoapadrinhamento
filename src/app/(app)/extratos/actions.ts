@@ -281,7 +281,7 @@ export async function ignorarTransacao(
 
   const { error } = await supabase
     .from("transacoes")
-    .update({ status_conciliacao: "ignorado" })
+    .update({ status_conciliacao: "ignorado", marcado_manualmente: true })
     .eq("id", transacaoId);
   if (error) {
     return { ok: false, erro: error.message };
@@ -298,7 +298,7 @@ export async function reverterIgnorado(
 
   const { error } = await supabase
     .from("transacoes")
-    .update({ status_conciliacao: "pendente" })
+    .update({ status_conciliacao: "pendente", marcado_manualmente: false })
     .eq("id", transacaoId);
   if (error) {
     return { ok: false, erro: error.message };
@@ -306,4 +306,25 @@ export async function reverterIgnorado(
 
   revalidatePath("/extratos");
   return { ok: true };
+}
+
+// Apaga definitivamente todos os lançamentos marcados como "não é
+// apadrinhamento" (automáticos e manuais) — usado pra limpar a lista quando
+// ela já cumpriu seu papel de "conferir antes de sumir para sempre".
+export async function apagarIgnorados(): Promise<
+  { ok: false; erro: string } | { ok: true; apagadas: number }
+> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("transacoes")
+    .delete()
+    .eq("status_conciliacao", "ignorado")
+    .select("id");
+  if (error) {
+    return { ok: false, erro: error.message };
+  }
+
+  revalidatePath("/extratos");
+  return { ok: true, apagadas: data?.length ?? 0 };
 }
