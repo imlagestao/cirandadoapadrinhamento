@@ -1,16 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import LogoutButton from "@/components/LogoutButton";
-
-const NAV_ITEMS = [
-  { href: "/", label: "Painel" },
-  { href: "/criancas", label: "Público atendido" },
-  { href: "/criancas/sem-padrinho", label: "Sem padrinho/madrinha" },
-  { href: "/padrinhos", label: "Padrinho/Madrinha" },
-  { href: "/extratos", label: "Extratos & Conciliação" },
-  { href: "/relatorios", label: "Relatórios" },
-  { href: "/adimplencia", label: "Adimplência" },
-] as const;
+import MobileNav from "@/components/MobileNav";
+import { NAV_ITEMS } from "@/components/navItems";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
@@ -44,7 +36,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="flex min-h-screen flex-1 flex-col">
-        <header className="flex items-center border-b border-border bg-surface px-4 py-3 md:hidden">
+        <header className="flex items-center justify-between border-b border-border bg-surface px-4 py-3 md:hidden">
           <Image
             src="/logo-ciranda.png"
             alt="Ciranda do Apadrinhamento"
@@ -53,6 +45,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             className="h-8 w-auto"
             priority
           />
+          <MobileNav />
         </header>
         <main className="flex-1 bg-background p-6 md:p-10">{children}</main>
       </div>
