@@ -107,7 +107,50 @@ export async function alternarMensalidade(
     return { ok: false, erro: error.message };
   }
 
+  // Ao desmarcar, desfaz também a conciliação da(s) transação(ões) daquele
+  // mês com esse padrinho — senão o extrato fica "gasto" com um pagamento
+  // que a equipe acabou de dizer que não é dele, e some da fila de revisão.
+  if (!pago) {
+    const mesStr = String(mes).padStart(2, "0");
+    const inicio = `${ano}-${mesStr}-01`;
+    const proximoMes = mes === 12 ? 1 : mes + 1;
+    const anoProximoMes = mes === 12 ? ano + 1 : ano;
+    const fim = `${anoProximoMes}-${String(proximoMes).padStart(2, "0")}-01`;
+
+    const { data: conciliacoesDoPadrinho } = await supabase
+      .from("conciliacoes")
+      .select("transacao_id")
+      .eq("padrinho_id", padrinhoId);
+
+    const idsConciliados = (conciliacoesDoPadrinho ?? []).map(
+      (c) => c.transacao_id as string,
+    );
+
+    if (idsConciliados.length > 0) {
+      const { data: transacoesDoMes } = await supabase
+        .from("transacoes")
+        .select("id")
+        .in("id", idsConciliados)
+        .gte("data", inicio)
+        .lt("data", fim);
+
+      const transacaoIds = (transacoesDoMes ?? []).map((t) => t.id as string);
+      if (transacaoIds.length > 0) {
+        await supabase
+          .from("conciliacoes")
+          .delete()
+          .in("transacao_id", transacaoIds);
+        await supabase
+          .from("transacoes")
+          .update({ status_conciliacao: "pendente" })
+          .in("id", transacaoIds);
+      }
+    }
+  }
+
   revalidatePath(`/padrinhos/${padrinhoId}`);
+  revalidatePath("/extratos");
+  revalidatePath("/adimplencia");
   return { ok: true };
 }
 
