@@ -11,6 +11,7 @@
   "dependencies": {
     "@supabase/ssr": "^0.12.1",
     "@supabase/supabase-js": "^2.110.3",
+    "@thednp/dommatrix": "^3.0.4",
     "exceljs": "^4.4.0",
     "next": "16.2.10",
     "pdf-parse": "^2.4.5",
