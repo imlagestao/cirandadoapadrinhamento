@@ -328,3 +328,61 @@ export async function apagarIgnorados(): Promise<
   revalidatePath("/extratos");
   return { ok: true, apagadas: data?.length ?? 0 };
 }
+
+// Correção única para meses desmarcados antes da mensalidade voltar a
+// desfazer a conciliação (bug já corrigido) — acha mensalidades marcadas
+// como "não pago" cuja transação ainda ficou presa como "conciliado" e
+// devolve pra fila.
+export async function corrigirMensalidadesDesmarcadas(): Promise<
+  { ok: false; erro: string } | { ok: true; corrigidas: number }
+> {
+  const supabase = await createClient();
+
+  const { data: naoPagas, error: erroBusca } = await supabase
+    .from("mensalidades")
+    .select("padrinho_id, ano, mes")
+    .eq("pago", false);
+  if (erroBusca) {
+    return { ok: false, erro: erroBusca.message };
+  }
+
+  let corrigidas = 0;
+  for (const m of naoPagas ?? []) {
+    const mesStr = String(m.mes).padStart(2, "0");
+    const inicio = `${m.ano}-${mesStr}-01`;
+    const proximoMes = m.mes === 12 ? 1 : m.mes + 1;
+    const anoProximoMes = m.mes === 12 ? m.ano + 1 : m.ano;
+    const fim = `${anoProximoMes}-${String(proximoMes).padStart(2, "0")}-01`;
+
+    const { data: conciliacoesDoPadrinho } = await supabase
+      .from("conciliacoes")
+      .select("transacao_id")
+      .eq("padrinho_id", m.padrinho_id);
+    const idsConciliados = (conciliacoesDoPadrinho ?? []).map(
+      (c) => c.transacao_id as string,
+    );
+    if (idsConciliados.length === 0) continue;
+
+    const { data: transacoesPresas } = await supabase
+      .from("transacoes")
+      .select("id")
+      .in("id", idsConciliados)
+      .eq("status_conciliacao", "conciliado")
+      .gte("data", inicio)
+      .lt("data", fim);
+
+    const transacaoIds = (transacoesPresas ?? []).map((t) => t.id as string);
+    if (transacaoIds.length > 0) {
+      await supabase.from("conciliacoes").delete().in("transacao_id", transacaoIds);
+      await supabase
+        .from("transacoes")
+        .update({ status_conciliacao: "pendente" })
+        .in("id", transacaoIds);
+      corrigidas += transacaoIds.length;
+    }
+  }
+
+  revalidatePath("/extratos");
+  revalidatePath("/adimplencia");
+  return { ok: true, corrigidas };
+}

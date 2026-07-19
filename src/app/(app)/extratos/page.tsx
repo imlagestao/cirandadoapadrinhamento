@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { sugerirPadrinhos } from "@/lib/extratos/sugestao";
 import ApagarIgnoradosButton from "./ApagarIgnoradosButton";
 import ConciliacaoItem from "./ConciliacaoItem";
+import CorrigirMensalidadesButton from "./CorrigirMensalidadesButton";
 import CorrigirNomesButton from "./CorrigirNomesButton";
 import IgnorarValoresBaixosButton from "./IgnorarValoresBaixosButton";
 import ImportarExtratoForm from "./ImportarExtratoForm";
@@ -152,6 +153,7 @@ export default async function ExtratosPage() {
       <div className="flex flex-wrap gap-2">
         <CorrigirNomesButton />
         <IgnorarValoresBaixosButton />
+        <CorrigirMensalidadesButton />
       </div>
 
       <div className="flex flex-col gap-3">
