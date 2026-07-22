@@ -7,6 +7,7 @@ type PadrinhoRow = {
   nome: string;
   whatsapp: string | null;
   email: string | null;
+  nascimento: string | null;
   status: string;
   padrinho_desde: string | null;
   apadrinhamentos: { criancas: { nome: string } | null }[] | null;
@@ -14,12 +15,31 @@ type PadrinhoRow = {
 
 const LETRAS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
+const ABAS = [
+  { visao: "todos", label: "Todos" },
+  { visao: "incompleta", label: "Ficha incompleta" },
+] as const;
+
+function camposFaltando(p: PadrinhoRow): string[] {
+  const faltando: string[] = [];
+  if (!p.whatsapp) faltando.push("Whatsapp");
+  if (!p.email) faltando.push("E-mail");
+  if (!p.nascimento) faltando.push("Nascimento");
+  return faltando;
+}
+
 export default async function PadrinhosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ letra?: string; ano?: string }>;
+  searchParams: Promise<{ letra?: string; ano?: string; visao?: string }>;
 }) {
-  const { letra: letraParam, ano: anoParam } = await searchParams;
+  const {
+    letra: letraParam,
+    ano: anoParam,
+    visao: visaoParam,
+  } = await searchParams;
+
+  const visao = visaoParam === "incompleta" ? "incompleta" : "todos";
 
   const supabase = await createClient();
 
@@ -47,7 +67,7 @@ export default async function PadrinhosPage({
   let query = supabase
     .from("padrinhos")
     .select(
-      "id, nome, whatsapp, email, status, padrinho_desde, apadrinhamentos(criancas(nome))",
+      "id, nome, whatsapp, email, nascimento, status, padrinho_desde, apadrinhamentos(criancas(nome))",
       { count: "exact" },
     )
     .order("nome")
@@ -59,11 +79,14 @@ export default async function PadrinhosPage({
       .gte("padrinho_desde", `${ano}-01-01`)
       .lt("padrinho_desde", `${Number(ano) + 1}-01-01`);
   }
+  if (visao === "incompleta") {
+    query = query.or("whatsapp.is.null,email.is.null,nascimento.is.null");
+  }
 
   const { data, count } = await query;
   const padrinhos = data as unknown as PadrinhoRow[] | null;
 
-  const filtroAtivo = Boolean(letra || ano);
+  const filtroAtivo = Boolean(letra || ano || visao === "incompleta");
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">
@@ -86,10 +109,26 @@ export default async function PadrinhosPage({
 
       <ImportarFichasForm />
 
+      <div className="flex gap-2 border-b border-border">
+        {ABAS.map((aba) => (
+          <Link
+            key={aba.visao}
+            href={buildHref(letra, ano, aba.visao)}
+            className={`rounded-t-lg px-4 py-2 text-sm font-medium transition-colors ${
+              visao === aba.visao
+                ? "border-b-2 border-brand-green-dark text-brand-green-dark"
+                : "text-muted hover:text-foreground"
+            }`}
+          >
+            {aba.label}
+          </Link>
+        ))}
+      </div>
+
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap gap-1">
           <Link
-            href={buildHref(null, ano)}
+            href={buildHref(null, ano, visao)}
             className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
               !letra
                 ? "bg-brand-blue-dark text-white"
@@ -103,7 +142,7 @@ export default async function PadrinhosPage({
             return (
               <Link
                 key={l}
-                href={disponivel ? buildHref(l, ano) : "#"}
+                href={disponivel ? buildHref(l, ano, visao) : "#"}
                 aria-disabled={!disponivel}
                 className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
                   !disponivel
@@ -121,7 +160,7 @@ export default async function PadrinhosPage({
 
         <div className="flex flex-wrap gap-2">
           <Link
-            href={buildHref(letra, null)}
+            href={buildHref(letra, null, visao)}
             className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
               !ano
                 ? "bg-brand-green-dark text-white"
@@ -133,7 +172,7 @@ export default async function PadrinhosPage({
           {anosDisponiveis.map((a) => (
             <Link
               key={a}
-              href={buildHref(letra, a)}
+              href={buildHref(letra, a, visao)}
               className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                 ano === a
                   ? "bg-brand-green-dark text-white"
@@ -153,7 +192,11 @@ export default async function PadrinhosPage({
               <th className="px-4 py-3 font-medium">Nome</th>
               <th className="px-4 py-3 font-medium">Contato</th>
               <th className="px-4 py-3 font-medium">Crianças apadrinhadas</th>
-              <th className="px-4 py-3 font-medium">Status</th>
+              {visao === "incompleta" ? (
+                <th className="px-4 py-3 font-medium">Faltando</th>
+              ) : (
+                <th className="px-4 py-3 font-medium">Status</th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -188,17 +231,25 @@ export default async function PadrinhosPage({
                     "—"
                   )}
                 </td>
-                <td className="px-4 py-3">
-                  <span className="rounded-full bg-brand-green/15 px-2 py-1 text-xs font-medium text-brand-green-dark">
-                    {padrinho.status}
-                  </span>
-                </td>
+                {visao === "incompleta" ? (
+                  <td className="px-4 py-3 text-muted">
+                    {camposFaltando(padrinho).join(", ")}
+                  </td>
+                ) : (
+                  <td className="px-4 py-3">
+                    <span className="rounded-full bg-brand-green/15 px-2 py-1 text-xs font-medium text-brand-green-dark">
+                      {padrinho.status}
+                    </span>
+                  </td>
+                )}
               </tr>
             ))}
             {(padrinhos ?? []).length === 0 && (
               <tr>
                 <td colSpan={4} className="px-4 py-8 text-center text-muted">
-                  Nenhum padrinho encontrado com esse filtro.
+                  {visao === "incompleta"
+                    ? "Nenhuma ficha incompleta encontrada com esse filtro."
+                    : "Nenhum padrinho encontrado com esse filtro."}
                 </td>
               </tr>
             )}
@@ -209,10 +260,15 @@ export default async function PadrinhosPage({
   );
 }
 
-function buildHref(letra: string | null, ano: string | null): string {
+function buildHref(
+  letra: string | null,
+  ano: string | null,
+  visao: string,
+): string {
   const params = new URLSearchParams();
   if (letra) params.set("letra", letra);
   if (ano) params.set("ano", ano);
+  if (visao !== "todos") params.set("visao", visao);
   const query = params.toString();
   return query ? `/padrinhos?${query}` : "/padrinhos";
 }
