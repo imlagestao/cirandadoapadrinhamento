@@ -34,6 +34,7 @@ export default async function ExtratosPage() {
 
   const [
     { data: padrinhos },
+    { data: apadrinhamentos },
     { data: pendentes },
     { count: conciliadas },
     { data: ignorados },
@@ -41,6 +42,7 @@ export default async function ExtratosPage() {
     { data: apelidos },
   ] = await Promise.all([
     supabase.from("padrinhos").select("id, nome").order("nome"),
+    supabase.from("apadrinhamentos").select("padrinho_id"),
     supabase
       .from("transacoes")
       .select("id, data, descricao, nome_extraido, valor")
@@ -66,7 +68,15 @@ export default async function ExtratosPage() {
     supabase.from("apelidos_transacao").select("nome_normalizado, padrinho_id"),
   ]);
 
-  const listaPadrinhos = padrinhos ?? [];
+  const afilhadosPorPadrinho = new Map<string, number>();
+  for (const a of apadrinhamentos ?? []) {
+    const id = a.padrinho_id as string;
+    afilhadosPorPadrinho.set(id, (afilhadosPorPadrinho.get(id) ?? 0) + 1);
+  }
+  const listaPadrinhos = (padrinhos ?? []).map((p) => ({
+    ...p,
+    afilhados: afilhadosPorPadrinho.get(p.id) ?? 0,
+  }));
   const listaPendentes = (pendentes ?? []) as TransacaoRow[];
   const listaIgnorados = (ignorados ?? []) as TransacaoIgnoradaRow[];
   const mapaApelidos = new Map(

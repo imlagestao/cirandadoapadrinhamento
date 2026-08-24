@@ -113,6 +113,7 @@ export async function importarExtrato(
 export async function confirmarConciliacao(
   transacaoId: string,
   padrinhoId: string,
+  mesesAdicionais: { ano: number; mes: number }[] = [],
 ): Promise<{ ok: boolean; erro?: string }> {
   const supabase = await createClient();
 
@@ -164,17 +165,24 @@ export async function confirmarConciliacao(
   }
 
   const [ano, mes] = transacao.data.split("-");
+  const mesesParaMarcar = [
+    { ano: Number(ano), mes: Number(mes) },
+    ...mesesAdicionais,
+  ];
+  const linhasMensalidade = [
+    ...new Map(
+      mesesParaMarcar.map((m) => [`${m.ano}-${m.mes}`, m]),
+    ).values(),
+  ].map((m) => ({
+    padrinho_id: padrinhoId,
+    ano: m.ano,
+    mes: m.mes,
+    pago: true,
+  }));
+
   const { error: erroMensalidade } = await supabase
     .from("mensalidades")
-    .upsert(
-      {
-        padrinho_id: padrinhoId,
-        ano: Number(ano),
-        mes: Number(mes),
-        pago: true,
-      },
-      { onConflict: "padrinho_id,ano,mes" },
-    );
+    .upsert(linhasMensalidade, { onConflict: "padrinho_id,ano,mes" });
   if (erroMensalidade) {
     return { ok: false, erro: erroMensalidade.message };
   }

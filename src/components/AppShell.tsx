@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import BotaoVoltar from "@/components/BotaoVoltar";
 import LogoutButton from "@/components/LogoutButton";
 import MobileNav from "@/components/MobileNav";
 import { NAV_ITEMS } from "@/components/navItems";
@@ -47,7 +48,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           />
           <MobileNav />
         </header>
-        <main className="flex-1 bg-background p-6 md:p-10">{children}</main>
+        <main className="flex-1 bg-background p-6 md:p-10">
+          <BotaoVoltar />
+          {children}
+        </main>
       </div>
     </div>
   );

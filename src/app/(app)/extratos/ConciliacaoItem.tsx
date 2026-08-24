@@ -21,6 +21,57 @@ function formataValor(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+const VALORES_MENSALIDADE = [20, 25];
+
+// Sugestão visual sobre um valor que não é exatamente "1 afilhado x mensalidade":
+// pode ser porque esse padrinho tem mais de um afilhado (valor normal) OU
+// porque o PIX cobre mais de um mês — não dá pra saber sozinho qual dos dois
+// é (não sabemos qual dos valores de mensalidade foi combinado com cada um),
+// então é só uma dica pra equipe conferir, nunca decide nada automaticamente.
+function dicaValor(valor: number, afilhados: number): string | null {
+  if (afilhados > 0) {
+    const bateComAfilhados = VALORES_MENSALIDADE.some(
+      (base) => valor === afilhados * base,
+    );
+    if (bateComAfilhados) return null;
+  }
+
+  const multiplos = VALORES_MENSALIDADE.filter((base) => {
+    const n = valor / base;
+    return Number.isInteger(n) && n >= 2;
+  }).map((base) => `${valor / base}x R$${base}`);
+  if (multiplos.length === 0) return null;
+
+  return afilhados > 0
+    ? `Valor não bate com ${afilhados} afilhado(s) a R$20/25 — pode ser ${multiplos.join(" ou ")} (meses extras) ou mais afilhados do que o cadastrado.`
+    : `Pode ser ${multiplos.join(" ou ")} — confira se cobre mais de um mês.`;
+}
+
+function gerarMesesVizinhos(
+  dataIso: string,
+): { ano: number; mes: number; chave: string; label: string }[] {
+  const [anoBase, mesBase] = dataIso.split("-").map(Number);
+  const vizinhos: { ano: number; mes: number; chave: string; label: string }[] = [];
+  for (let offset = -6; offset <= 6; offset++) {
+    if (offset === 0) continue;
+    const totalMeses = (mesBase - 1) + offset;
+    const ano = anoBase + Math.floor(totalMeses / 12);
+    const mes = ((totalMeses % 12) + 12) % 12 + 1;
+    vizinhos.push({
+      ano,
+      mes,
+      chave: `${ano}-${mes}`,
+      label: `${MESES_ABREV[mes - 1]}/${String(ano).slice(2)}`,
+    });
+  }
+  return vizinhos;
+}
+
+const MESES_ABREV = [
+  "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
+  "Jul", "Ago", "Set", "Out", "Nov", "Dez",
+];
+
 export default function ConciliacaoItem({
   transacao,
   sugestoes,
@@ -28,7 +79,7 @@ export default function ConciliacaoItem({
 }: {
   transacao: Transacao;
   sugestoes: SugestaoPadrinho[];
-  padrinhosDisponiveis: { id: string; nome: string }[];
+  padrinhosDisponiveis: { id: string; nome: string; afilhados: number }[];
 }) {
   const [isPending, startTransition] = useTransition();
   const [feito, setFeito] = useState(false);
@@ -36,12 +87,28 @@ export default function ConciliacaoItem({
   const [selecionado, setSelecionado] = useState(
     sugestoes[0]?.id ?? "",
   );
+  const [mostrarMesesExtras, setMostrarMesesExtras] = useState(false);
+  const [mesesExtras, setMesesExtras] = useState<Set<string>>(new Set());
+
+  const mesesVizinhos = gerarMesesVizinhos(transacao.data);
+
+  function alternarMesExtra(chave: string, marcado: boolean) {
+    setMesesExtras((atual) => {
+      const novo = new Set(atual);
+      if (marcado) novo.add(chave);
+      else novo.delete(chave);
+      return novo;
+    });
+  }
 
   function confirmar() {
     if (!selecionado) return;
     setErro(null);
+    const extras = mesesVizinhos
+      .filter((m) => mesesExtras.has(m.chave))
+      .map((m) => ({ ano: m.ano, mes: m.mes }));
     startTransition(async () => {
-      const res = await confirmarConciliacao(transacao.id, selecionado);
+      const res = await confirmarConciliacao(transacao.id, selecionado, extras);
       if (!res.ok) {
         setErro(res.erro ?? "Erro ao confirmar.");
         return;
@@ -65,65 +132,104 @@ export default function ConciliacaoItem({
   if (feito) return null;
 
   const melhorScore = sugestoes[0]?.score ?? 0;
+  const afilhadosSelecionado =
+    padrinhosDisponiveis.find((p) => p.id === selecionado)?.afilhados ?? 0;
+  const dica = dicaValor(transacao.valor, afilhadosSelecionado);
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-border p-4 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <p className="text-sm font-medium text-foreground">
-          {transacao.nomeExtraido ?? transacao.descricao}
-        </p>
-        <p className="text-xs text-muted">
-          {formataData(transacao.data)} · {formataValor(transacao.valor)}
-        </p>
-        {melhorScore > 0 && melhorScore < 1 && (
-          <p className="text-xs text-brand-blue-dark">
-            Sugestão por nome parecido ({Math.round(melhorScore * 100)}% de
-            confiança)
+    <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-medium text-foreground">
+            {transacao.nomeExtraido ?? transacao.descricao}
           </p>
-        )}
-      </div>
+          <p className="text-xs text-muted">
+            {formataData(transacao.data)} · {formataValor(transacao.valor)}
+          </p>
+          {melhorScore > 0 && melhorScore < 1 && (
+            <p className="text-xs text-brand-blue-dark">
+              Sugestão por nome parecido ({Math.round(melhorScore * 100)}% de
+              confiança)
+            </p>
+          )}
+          {dica && (
+            <p className="text-xs text-brand-blue-dark">
+              {dica} — confira se cobre mais de um mês.
+            </p>
+          )}
+        </div>
 
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <select
-          value={selecionado}
-          onChange={(e) => setSelecionado(e.target.value)}
-          className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-brand-blue focus:ring-2 focus:ring-brand-blue/30"
-        >
-          <option value="">Selecione o padrinho...</option>
-          {sugestoes.length > 0 && (
-            <optgroup label="Sugestões">
-              {sugestoes.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.nome} ({Math.round(s.score * 100)}%)
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <select
+            value={selecionado}
+            onChange={(e) => setSelecionado(e.target.value)}
+            className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-brand-blue focus:ring-2 focus:ring-brand-blue/30"
+          >
+            <option value="">Selecione o padrinho...</option>
+            {sugestoes.length > 0 && (
+              <optgroup label="Sugestões">
+                {sugestoes.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.nome} ({Math.round(s.score * 100)}%)
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            <optgroup label="Todos os padrinhos">
+              {padrinhosDisponiveis.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nome}
                 </option>
               ))}
             </optgroup>
-          )}
-          <optgroup label="Todos os padrinhos">
-            {padrinhosDisponiveis.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.nome}
-              </option>
-            ))}
-          </optgroup>
-        </select>
-        <button
-          type="button"
-          onClick={confirmar}
-          disabled={isPending || !selecionado}
-          className="rounded-lg bg-brand-green-dark px-3 py-2 text-xs font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-60"
-        >
-          Confirmar
-        </button>
-        <button
-          type="button"
-          onClick={ignorar}
-          disabled={isPending}
-          className="rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted transition-colors hover:bg-background disabled:opacity-60"
-        >
-          Não é apadrinhamento
-        </button>
+          </select>
+          <button
+            type="button"
+            onClick={confirmar}
+            disabled={isPending || !selecionado}
+            className="rounded-lg bg-brand-green-dark px-3 py-2 text-xs font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-60"
+          >
+            Confirmar
+          </button>
+          <button
+            type="button"
+            onClick={ignorar}
+            disabled={isPending}
+            className="rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted transition-colors hover:bg-background disabled:opacity-60"
+          >
+            Não é apadrinhamento
+          </button>
+        </div>
       </div>
+
+      <div>
+        <button
+          type="button"
+          onClick={() => setMostrarMesesExtras((v) => !v)}
+          className="text-xs font-medium text-brand-blue-dark underline-offset-2 hover:underline"
+        >
+          {mostrarMesesExtras ? "− ocultar meses adicionais" : "+ marcar meses adicionais"}
+        </button>
+        {mostrarMesesExtras && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {mesesVizinhos.map((m) => (
+              <label
+                key={m.chave}
+                className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-foreground"
+              >
+                <input
+                  type="checkbox"
+                  checked={mesesExtras.has(m.chave)}
+                  onChange={(e) => alternarMesExtra(m.chave, e.target.checked)}
+                  className="h-3 w-3 accent-brand-green-dark"
+                />
+                {m.label}
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+
       {erro && <p className="text-xs text-red-600">{erro}</p>}
     </div>
   );
