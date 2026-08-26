@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { normalizaNome } from "@/lib/nomes";
+import { registrarAtualizacao } from "@/lib/auditoria";
 
 type StatusCrianca = "matriculado" | "retirado";
 
@@ -248,6 +249,11 @@ export async function importarPlanilha(formData: FormData) {
     }
   }
 
+  await registrarAtualizacao(supabase, {
+    tipo: "importacao",
+    descricao: `Reimportou planilha de crianças (substituiu toda a lista): ${criancasInseridas?.length ?? 0} crianças, ${padrinhosParaCriar.length} padrinhos novos, ${vinculos.length} vínculos`,
+  });
+
   revalidatePath("/criancas");
   revalidatePath("/padrinhos");
   revalidatePath("/");
@@ -278,6 +284,18 @@ function dadosCrianca(formData: FormData) {
     comunidade: textoForm(formData, "comunidade"),
     status: textoForm(formData, "status") ?? "matriculado",
   };
+}
+
+async function nomesDePadrinhos(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  padrinhoIds: string[],
+): Promise<string[]> {
+  if (padrinhoIds.length === 0) return [];
+  const { data } = await supabase
+    .from("padrinhos")
+    .select("nome")
+    .in("id", padrinhoIds);
+  return (data ?? []).map((p) => p.nome);
 }
 
 async function salvarVinculosPadrinhos(
@@ -318,6 +336,15 @@ export async function vincularPadrinhoRapido(
     return { ok: false, erro: error.message };
   }
 
+  const [{ data: crianca }, { data: padrinho }] = await Promise.all([
+    supabase.from("criancas").select("nome").eq("id", criancaId).single(),
+    supabase.from("padrinhos").select("nome").eq("id", padrinhoId).single(),
+  ]);
+  await registrarAtualizacao(supabase, {
+    tipo: "apadrinhamento_alterado",
+    descricao: `Vinculou ${padrinho?.nome ?? "um padrinho/madrinha"} como padrinho/madrinha de ${crianca?.nome ?? "uma criança"}`,
+  });
+
   revalidatePath("/criancas");
   revalidatePath("/criancas/sem-padrinho");
   revalidatePath("/padrinhos");
@@ -357,6 +384,16 @@ export async function criarPadrinhoEVincular(
     return { ok: false, erro: erroVinculo.message };
   }
 
+  const { data: crianca } = await supabase
+    .from("criancas")
+    .select("nome")
+    .eq("id", criancaId)
+    .single();
+  await registrarAtualizacao(supabase, {
+    tipo: "padrinho_criado",
+    descricao: `Cadastrou o padrinho/madrinha ${nome} e vinculou como padrinho/madrinha de ${crianca?.nome ?? "uma criança"}`,
+  });
+
   revalidatePath("/criancas");
   revalidatePath("/criancas/sem-padrinho");
   revalidatePath("/padrinhos");
@@ -387,6 +424,18 @@ export async function criarCrianca(
 
   await salvarVinculosPadrinhos(data.id, formData);
 
+  const padrinhoIds = formData
+    .getAll("padrinho_ids")
+    .filter((v): v is string => typeof v === "string" && v.length > 0);
+  const nomesPadrinhos = await nomesDePadrinhos(supabase, padrinhoIds);
+  await registrarAtualizacao(supabase, {
+    tipo: "crianca_criada",
+    descricao:
+      nomesPadrinhos.length > 0
+        ? `Cadastrou a criança ${dados.nome} e vinculou a ${nomesPadrinhos.join(", ")}`
+        : `Cadastrou a criança ${dados.nome}`,
+  });
+
   revalidatePath("/criancas");
   revalidatePath("/padrinhos");
   redirect("/criancas");
@@ -403,6 +452,14 @@ export async function atualizarCrianca(
     return { ok: false, erro: "Informe o nome." };
   }
 
+  const [{ data: antes }, { data: vinculosAntes }] = await Promise.all([
+    supabase.from("criancas").select("status").eq("id", id).single(),
+    supabase
+      .from("apadrinhamentos")
+      .select("padrinho_id, padrinhos(nome)")
+      .eq("crianca_id", id),
+  ]);
+
   const { error } = await supabase.from("criancas").update(dados).eq("id", id);
 
   if (error) {
@@ -410,6 +467,52 @@ export async function atualizarCrianca(
   }
 
   await salvarVinculosPadrinhos(id, formData);
+
+  if (antes && antes.status !== dados.status) {
+    await registrarAtualizacao(supabase, {
+      tipo: "crianca_status",
+      descricao:
+        dados.status === "retirado"
+          ? `Retirou ${dados.nome} da lista (não está mais frequentando)`
+          : `Reativou ${dados.nome} na lista`,
+    });
+  }
+
+  const idsAntes = new Set(
+    (vinculosAntes ?? []).map((v) => v.padrinho_id as string),
+  );
+  const idsDepois = new Set(
+    formData
+      .getAll("padrinho_ids")
+      .filter((v): v is string => typeof v === "string" && v.length > 0),
+  );
+  const saiuIds = [...idsAntes].filter((pid) => !idsDepois.has(pid));
+  const entrouIds = [...idsDepois].filter((pid) => !idsAntes.has(pid));
+
+  if (saiuIds.length > 0 || entrouIds.length > 0) {
+    const nomesAntesMap = new Map(
+      (vinculosAntes ?? []).map((v) => [
+        v.padrinho_id as string,
+        (v.padrinhos as unknown as { nome: string } | null)?.nome ?? "?",
+      ]),
+    );
+    const saiuNomes = saiuIds.map((pid) => nomesAntesMap.get(pid) ?? "?");
+    const entrouNomes = await nomesDePadrinhos(supabase, entrouIds);
+
+    let descricao: string;
+    if (saiuNomes.length > 0 && entrouNomes.length > 0) {
+      descricao = `Trocou o padrinho/madrinha de ${dados.nome}: saiu ${saiuNomes.join(", ")}, entrou ${entrouNomes.join(", ")}`;
+    } else if (entrouNomes.length > 0) {
+      descricao = `Vinculou ${entrouNomes.join(", ")} como padrinho/madrinha de ${dados.nome}`;
+    } else {
+      descricao = `Desvinculou ${saiuNomes.join(", ")} de ${dados.nome}`;
+    }
+
+    await registrarAtualizacao(supabase, {
+      tipo: "apadrinhamento_alterado",
+      descricao,
+    });
+  }
 
   revalidatePath("/criancas");
   revalidatePath("/padrinhos");

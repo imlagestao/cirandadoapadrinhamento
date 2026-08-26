@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { normalizaNome } from "@/lib/nomes";
+import { registrarAtualizacao } from "@/lib/auditoria";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -46,6 +47,11 @@ export async function criarPadrinho(
   if (error) {
     return { ok: false, erro: error.message };
   }
+
+  await registrarAtualizacao(supabase, {
+    tipo: "padrinho_criado",
+    descricao: `Cadastrou o padrinho/madrinha ${dados.nome}`,
+  });
 
   revalidatePath("/padrinhos");
   redirect(`/padrinhos/${data.id}`);
