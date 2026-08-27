@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { alternarMensalidade } from "../actions";
+import DesistenciaButton from "./DesistenciaButton";
 import MensalidadesGrid from "./MensalidadesGrid";
 
 type CriancaLigada = {
@@ -96,12 +97,21 @@ export default async function FichaPadrinhoPage({
         <h1 className="text-2xl font-bold tracking-tight text-foreground">
           {padrinho.nome}
         </h1>
-        <Link
-          href={`/padrinhos/${id}/editar`}
-          className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-brand-green/10"
-        >
-          Editar
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/padrinhos/${id}/editar`}
+            className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-brand-green/10"
+          >
+            Editar
+          </Link>
+          {padrinho.status === "ativo" && (
+            <DesistenciaButton
+              padrinhoId={id}
+              nome={padrinho.nome}
+              afilhados={afilhados.length}
+            />
+          )}
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border bg-surface">

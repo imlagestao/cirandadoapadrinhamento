@@ -96,6 +96,62 @@ export async function excluirPadrinho(
   redirect("/padrinhos");
 }
 
+// Padrinho/madrinha desiste de participar — mantém o cadastro (histórico de
+// mensalidades etc.), só marca como inativo e solta os afilhados de volta
+// pra fila de "sem padrinho", pra equipe conseguir realocar.
+export async function registrarDesistencia(
+  padrinhoId: string,
+): Promise<{ ok: boolean; erro?: string }> {
+  const supabase = await createClient();
+
+  const [{ data: padrinho }, { data: vinculos }] = await Promise.all([
+    supabase.from("padrinhos").select("nome").eq("id", padrinhoId).single(),
+    supabase
+      .from("apadrinhamentos")
+      .select("criancas(nome)")
+      .eq("padrinho_id", padrinhoId),
+  ]);
+
+  if (!padrinho) {
+    return { ok: false, erro: "Padrinho/madrinha não encontrado." };
+  }
+
+  const { error: erroStatus } = await supabase
+    .from("padrinhos")
+    .update({ status: "inativo" })
+    .eq("id", padrinhoId);
+  if (erroStatus) {
+    return { ok: false, erro: erroStatus.message };
+  }
+
+  const { error: erroVinculos } = await supabase
+    .from("apadrinhamentos")
+    .delete()
+    .eq("padrinho_id", padrinhoId);
+  if (erroVinculos) {
+    return { ok: false, erro: erroVinculos.message };
+  }
+
+  const nomesAfilhados = (vinculos ?? [])
+    .map((v) => (v.criancas as unknown as { nome: string } | null)?.nome)
+    .filter((n): n is string => Boolean(n));
+
+  await registrarAtualizacao(supabase, {
+    tipo: "apadrinhamento_alterado",
+    descricao:
+      nomesAfilhados.length > 0
+        ? `${padrinho.nome} desistiu do apadrinhamento — afilhado(s) voltaram pra fila sem padrinho: ${nomesAfilhados.join(", ")}`
+        : `${padrinho.nome} desistiu do apadrinhamento`,
+  });
+
+  revalidatePath("/padrinhos");
+  revalidatePath(`/padrinhos/${padrinhoId}`);
+  revalidatePath("/criancas");
+  revalidatePath("/criancas/sem-padrinho");
+
+  return { ok: true };
+}
+
 export async function alternarMensalidade(
   padrinhoId: string,
   ano: number,
