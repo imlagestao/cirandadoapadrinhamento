@@ -1,7 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { confirmarConciliacao, ignorarTransacao } from "./actions";
+import {
+  confirmarConciliacao,
+  confirmarConciliacaoDividida,
+  ignorarTransacao,
+} from "./actions";
 import type { SugestaoPadrinho } from "@/lib/extratos/sugestao";
 
 type Transacao = {
@@ -92,6 +96,11 @@ export default function ConciliacaoItem({
   const [mostrarExtra, setMostrarExtra] = useState(false);
   const [temExtra, setTemExtra] = useState(false);
   const [valorExtra, setValorExtra] = useState("");
+  const [mostrarDivisao, setMostrarDivisao] = useState(false);
+  const [partes, setPartes] = useState<{ padrinhoId: string; valor: string }[]>([
+    { padrinhoId: "", valor: "" },
+    { padrinhoId: "", valor: "" },
+  ]);
 
   const mesesVizinhos = gerarMesesVizinhos(transacao.data);
 
@@ -121,6 +130,41 @@ export default function ConciliacaoItem({
         extras,
         contribuicaoExtra,
       );
+      if (!res.ok) {
+        setErro(res.erro ?? "Erro ao confirmar.");
+        return;
+      }
+      setFeito(true);
+    });
+  }
+
+  function atualizarParte(indice: number, campo: "padrinhoId" | "valor", valor: string) {
+    setPartes((atual) =>
+      atual.map((p, i) => (i === indice ? { ...p, [campo]: valor } : p)),
+    );
+  }
+
+  function adicionarParte() {
+    setPartes((atual) => [...atual, { padrinhoId: "", valor: "" }]);
+  }
+
+  function removerParte(indice: number) {
+    setPartes((atual) => atual.filter((_, i) => i !== indice));
+  }
+
+  function confirmarDivisao() {
+    setErro(null);
+    const partesValidas = partes
+      .map((p) => ({ padrinhoId: p.padrinhoId, valor: parseFloat(p.valor.replace(",", ".")) }))
+      .filter((p) => p.padrinhoId && Number.isFinite(p.valor) && p.valor > 0);
+
+    if (partesValidas.length < 2) {
+      setErro("Preencha padrinho e valor de pelo menos 2 partes.");
+      return;
+    }
+
+    startTransition(async () => {
+      const res = await confirmarConciliacaoDividida(transacao.id, partesValidas);
       if (!res.ok) {
         setErro(res.erro ?? "Erro ao confirmar.");
         return;
@@ -271,6 +315,81 @@ export default function ConciliacaoItem({
                 className="w-40 rounded-lg border border-border bg-background px-2 py-1 text-xs outline-none focus:border-brand-blue focus:ring-2 focus:ring-brand-blue/30"
               />
             )}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <button
+          type="button"
+          onClick={() => setMostrarDivisao((v) => !v)}
+          className="text-xs font-medium text-brand-blue-dark underline-offset-2 hover:underline"
+        >
+          {mostrarDivisao
+            ? "− ocultar divisão entre padrinhos"
+            : "+ dividir entre padrinhos diferentes"}
+        </button>
+        {mostrarDivisao && (
+          <div className="mt-2 flex flex-col gap-2 rounded-lg border border-border p-3">
+            <p className="text-xs text-muted">
+              Pra quando um PIX junta a contribuição de mais de uma pessoa.
+              Marca o mês de cada padrinho, sem meses extras nem contribuição
+              extra por parte — ajuste depois na ficha se precisar.
+            </p>
+            {partes.map((parte, i) => (
+              <div key={i} className="flex flex-wrap items-center gap-2">
+                <select
+                  value={parte.padrinhoId}
+                  onChange={(e) => atualizarParte(i, "padrinhoId", e.target.value)}
+                  className="flex-1 rounded-lg border border-border bg-background px-2 py-1.5 text-xs outline-none focus:border-brand-blue focus:ring-2 focus:ring-brand-blue/30"
+                >
+                  <option value="">Selecione o padrinho...</option>
+                  {padrinhosDisponiveis.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.nome}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="Valor (R$)"
+                  value={parte.valor}
+                  onChange={(e) => atualizarParte(i, "valor", e.target.value)}
+                  className="w-28 rounded-lg border border-border bg-background px-2 py-1.5 text-xs outline-none focus:border-brand-blue focus:ring-2 focus:ring-brand-blue/30"
+                />
+                {partes.length > 2 && (
+                  <button
+                    type="button"
+                    onClick={() => removerParte(i)}
+                    className="text-xs text-muted hover:text-red-600"
+                  >
+                    remover
+                  </button>
+                )}
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={adicionarParte}
+              className="self-start text-xs font-medium text-brand-blue-dark underline-offset-2 hover:underline"
+            >
+              + adicionar outro
+            </button>
+            <p className="text-xs text-muted">
+              Soma das partes: {formataValor(
+                partes.reduce((acc, p) => acc + (parseFloat(p.valor.replace(",", ".")) || 0), 0),
+              )}{" "}
+              · Valor do PIX: {formataValor(transacao.valor)}
+            </p>
+            <button
+              type="button"
+              onClick={confirmarDivisao}
+              disabled={isPending}
+              className="self-start rounded-lg bg-brand-green-dark px-3 py-2 text-xs font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-60"
+            >
+              Confirmar divisão
+            </button>
           </div>
         )}
       </div>

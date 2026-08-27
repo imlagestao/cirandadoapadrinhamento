@@ -141,7 +141,7 @@ export async function confirmarConciliacao(
         contribuicao_extra: !!contribuicaoExtra,
         valor_extra: contribuicaoExtra?.valor ?? null,
       },
-      { onConflict: "transacao_id" },
+      { onConflict: "transacao_id,padrinho_id" },
     );
   if (erroConciliacao) {
     return { ok: false, erro: erroConciliacao.message };
@@ -193,6 +193,79 @@ export async function confirmarConciliacao(
 
   revalidatePath("/extratos");
   revalidatePath(`/padrinhos/${padrinhoId}`);
+  revalidatePath("/");
+
+  return { ok: true };
+}
+
+// Um único PIX pode juntar a contribuição de mais de uma pessoa (ex: uma
+// madrinha manda o valor dela junto com o de outra). Cada parte vira uma
+// linha própria em conciliacoes, com o valor que cabe a ela, e marca o mês
+// da transação como pago pra cada padrinho — sem meses extras nem
+// contribuição extra por parte (caso raro, ajusta manualmente na ficha se
+// precisar de mais detalhe).
+export async function confirmarConciliacaoDividida(
+  transacaoId: string,
+  partes: { padrinhoId: string; valor: number }[],
+): Promise<{ ok: boolean; erro?: string }> {
+  if (partes.length < 2) {
+    return { ok: false, erro: "Informe pelo menos 2 padrinhos pra dividir." };
+  }
+
+  const supabase = await createClient();
+
+  const { data: transacao, error: erroTransacao } = await supabase
+    .from("transacoes")
+    .select("data")
+    .eq("id", transacaoId)
+    .single();
+  if (erroTransacao || !transacao) {
+    return { ok: false, erro: erroTransacao?.message ?? "Transação não encontrada." };
+  }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const { error: erroConciliacao } = await supabase.from("conciliacoes").upsert(
+    partes.map((p) => ({
+      transacao_id: transacaoId,
+      padrinho_id: p.padrinhoId,
+      confirmado_por: user?.id ?? null,
+      valor_parte: p.valor,
+    })),
+    { onConflict: "transacao_id,padrinho_id" },
+  );
+  if (erroConciliacao) {
+    return { ok: false, erro: erroConciliacao.message };
+  }
+
+  const [ano, mes] = transacao.data.split("-");
+  const linhasMensalidade = partes.map((p) => ({
+    padrinho_id: p.padrinhoId,
+    ano: Number(ano),
+    mes: Number(mes),
+    pago: true,
+    transacao_id: transacaoId,
+  }));
+
+  const { error: erroMensalidade } = await supabase
+    .from("mensalidades")
+    .upsert(linhasMensalidade, { onConflict: "padrinho_id,ano,mes" });
+  if (erroMensalidade) {
+    return { ok: false, erro: erroMensalidade.message };
+  }
+
+  const { error: erroStatus } = await supabase
+    .from("transacoes")
+    .update({ status_conciliacao: "conciliado" })
+    .eq("id", transacaoId);
+  if (erroStatus) {
+    return { ok: false, erro: erroStatus.message };
+  }
+
+  revalidatePath("/extratos");
+  for (const p of partes) revalidatePath(`/padrinhos/${p.padrinhoId}`);
   revalidatePath("/");
 
   return { ok: true };
