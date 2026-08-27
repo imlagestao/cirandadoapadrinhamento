@@ -16,6 +16,10 @@ export async function criarAtualizacaoManual(
   const dataEscolhida = String(formData.get("data") ?? "").trim();
   const criadoEm = dataEscolhida ? `${dataEscolhida}T12:00:00` : undefined;
 
+  // Autor escolhido no formulário (pra registrar em nome de outra pessoa da
+  // equipe) tem prioridade sobre quem está logado agora.
+  const autorEscolhido = String(formData.get("autor") ?? "").trim();
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -25,7 +29,7 @@ export async function criarAtualizacaoManual(
     tipo: "manual",
     origem: "manual",
     descricao,
-    autor_email: user?.email ?? null,
+    autor_email: autorEscolhido || user?.email || null,
     ...(criadoEm ? { criado_em: criadoEm } : {}),
   });
 

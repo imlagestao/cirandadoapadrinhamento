@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { normalizaNome } from "@/lib/nomes";
+import { nomeDoAutor } from "@/lib/autores";
 import EditarAtualizacaoButton from "./EditarAtualizacaoButton";
 
 type AtualizacaoRow = {
@@ -52,7 +53,7 @@ function Item({ a }: { a: AtualizacaoRow }) {
       </div>
       <p className="text-xs text-muted">
         {formataDataHora(a.criado_em)}
-        {a.autor_email && ` · ${a.autor_email}`}
+        {a.autor_email && ` · ${nomeDoAutor(a.autor_email)}`}
         {a.editado_em && ` · editado em ${formataDataHora(a.editado_em)}`}
       </p>
       <div>
@@ -86,7 +87,11 @@ export default function AtualizacoesLista({
   const resultadosBusca = useMemo(() => {
     const alvo = normalizaNome(busca);
     if (!alvo) return null;
-    return lista.filter((a) => normalizaNome(a.descricao).includes(alvo));
+    return lista.filter((a) => {
+      if (normalizaNome(a.descricao).includes(alvo)) return true;
+      const autor = nomeDoAutor(a.autor_email);
+      return autor ? normalizaNome(autor).includes(alvo) : false;
+    });
   }, [lista, busca]);
 
   const grupos = useMemo(() => {
