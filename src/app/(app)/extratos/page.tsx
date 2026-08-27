@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { sugerirPadrinhos } from "@/lib/extratos/sugestao";
+import BuscaExtratos from "./BuscaExtratos";
 import ConciliacaoItem from "./ConciliacaoItem";
 import CorrigirMensalidadesButton from "./CorrigirMensalidadesButton";
 import CorrigirMensalidadesFaltandoButton from "./CorrigirMensalidadesFaltandoButton";
@@ -18,6 +19,10 @@ type TransacaoRow = {
 
 type TransacaoIgnoradaRow = TransacaoRow & { marcado_manualmente: boolean };
 
+type TransacaoConciliadaRow = TransacaoRow & {
+  conciliacoes: { padrinhos: { nome: string } | null }[] | null;
+};
+
 type CoberturaRow = {
   data: string;
   contas_bancarias: { nome: string } | null;
@@ -35,7 +40,7 @@ export default async function ExtratosPage() {
     { data: padrinhos },
     { data: apadrinhamentos },
     { data: pendentes },
-    { count: conciliadas },
+    { data: conciliadas },
     { data: ignorados },
     { data: cobertura },
     { data: apelidos },
@@ -51,8 +56,12 @@ export default async function ExtratosPage() {
       .limit(300),
     supabase
       .from("transacoes")
-      .select("id", { count: "exact", head: true })
-      .eq("status_conciliacao", "conciliado"),
+      .select(
+        "id, data, descricao, nome_extraido, valor, conciliacoes(padrinhos(nome))",
+      )
+      .eq("status_conciliacao", "conciliado")
+      .order("data", { ascending: false })
+      .limit(300),
     supabase
       .from("transacoes")
       .select("id, data, descricao, nome_extraido, valor, marcado_manualmente")
@@ -78,6 +87,7 @@ export default async function ExtratosPage() {
   }));
   const listaPendentes = (pendentes ?? []) as TransacaoRow[];
   const listaIgnorados = (ignorados ?? []) as TransacaoIgnoradaRow[];
+  const listaConciliadas = (conciliadas ?? []) as unknown as TransacaoConciliadaRow[];
   const mapaApelidos = new Map(
     (apelidos ?? []).map((a) => [a.nome_normalizado as string, a.padrinho_id as string]),
   );
@@ -109,10 +119,42 @@ export default async function ExtratosPage() {
           Extratos & Conciliação
         </h1>
         <p className="mt-1 text-sm text-muted">
-          {listaPendentes.length} pendentes de revisão · {conciliadas ?? 0}{" "}
-          conciliadas no total.
+          {listaPendentes.length} pendentes de revisão ·{" "}
+          {listaConciliadas.length} conciliadas no total.
         </p>
       </div>
+
+      <BuscaExtratos
+        pendentes={listaPendentes.map((t) => ({
+          id: t.id,
+          data: t.data,
+          descricao: t.descricao,
+          nomeExtraido: t.nome_extraido,
+          valor: t.valor,
+          status: "pendente" as const,
+          padrinhoNomes: [],
+        }))}
+        conciliadas={listaConciliadas.map((t) => ({
+          id: t.id,
+          data: t.data,
+          descricao: t.descricao,
+          nomeExtraido: t.nome_extraido,
+          valor: t.valor,
+          status: "conciliado" as const,
+          padrinhoNomes: (t.conciliacoes ?? [])
+            .map((c) => c.padrinhos?.nome)
+            .filter((n): n is string => Boolean(n)),
+        }))}
+        ignoradas={listaIgnorados.map((t) => ({
+          id: t.id,
+          data: t.data,
+          descricao: t.descricao,
+          nomeExtraido: t.nome_extraido,
+          valor: t.valor,
+          status: "ignorado" as const,
+          padrinhoNomes: [],
+        }))}
+      />
 
       {meses.length > 0 && (
         <div className="overflow-x-auto rounded-xl border border-border bg-surface">
