@@ -35,7 +35,7 @@ export default function NovaAtualizacaoForm() {
           precisa ficar registrado mesmo assim.
         </p>
       </div>
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
         <textarea
           name="descricao"
           required
@@ -43,14 +43,27 @@ export default function NovaAtualizacaoForm() {
           placeholder="O que aconteceu..."
           className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-brand-blue focus:ring-2 focus:ring-brand-blue/30"
         />
-        <button
-          type="submit"
-          disabled={isPending}
-          className="rounded-lg bg-brand-blue-dark px-4 py-2 text-sm font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-60"
-        >
-          {isPending ? "Salvando..." : "Registrar"}
-        </button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <input
+            type="date"
+            name="data"
+            title="Data do que aconteceu (deixe em branco pra usar hoje)"
+            className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-brand-blue focus:ring-2 focus:ring-brand-blue/30"
+          />
+          <button
+            type="submit"
+            disabled={isPending}
+            className="rounded-lg bg-brand-blue-dark px-4 py-2 text-sm font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-60"
+          >
+            {isPending ? "Salvando..." : "Registrar"}
+          </button>
+        </div>
       </div>
+      <p className="text-xs text-muted">
+        Deixe a data em branco pra registrar com a data de hoje. Pra algo de
+        um mês anterior, escolha a data certa — a atualização aparece
+        agrupada no mês correspondente.
+      </p>
       {erro && <p className="text-xs font-medium text-red-600">{erro}</p>}
     </form>
   );

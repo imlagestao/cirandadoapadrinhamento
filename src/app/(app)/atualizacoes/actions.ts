@@ -11,6 +11,11 @@ export async function criarAtualizacaoManual(
     return { ok: false, erro: "Escreva o que aconteceu." };
   }
 
+  // Data em branco = agora mesmo (padrão do banco); data escolhida = meio-dia
+  // daquele dia, só pra evitar que o fuso horário jogue pro dia errado.
+  const dataEscolhida = String(formData.get("data") ?? "").trim();
+  const criadoEm = dataEscolhida ? `${dataEscolhida}T12:00:00` : undefined;
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -21,6 +26,7 @@ export async function criarAtualizacaoManual(
     origem: "manual",
     descricao,
     autor_email: user?.email ?? null,
+    ...(criadoEm ? { criado_em: criadoEm } : {}),
   });
 
   if (error) {
