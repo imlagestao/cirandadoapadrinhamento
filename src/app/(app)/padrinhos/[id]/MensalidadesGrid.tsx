@@ -32,7 +32,15 @@ export default function MensalidadesGrid({
   padrinhoId: string;
   ano: number;
   pagos: Set<number>;
-  detalhes: Map<number, { valor: number; data: string } | null>;
+  detalhes: Map<
+    number,
+    {
+      valor: number;
+      data: string;
+      contribuicaoExtra: boolean;
+      valorExtra: number | null;
+    } | null
+  >;
   alternar: (
     padrinhoId: string,
     ano: number,
@@ -84,6 +92,11 @@ export default function MensalidadesGrid({
                         {detalhe
                           ? `R$${detalhe.valor} · ${formataDataCurta(detalhe.data)}`
                           : "manual"}
+                      </span>
+                    )}
+                    {detalhe?.contribuicaoExtra && (
+                      <span className="rounded-full bg-brand-pink/15 px-1.5 py-0.5 text-[9px] font-medium leading-tight text-brand-pink">
+                        {detalhe.valorExtra ? `+R$${detalhe.valorExtra} extra` : "+extra"}
                       </span>
                     )}
                   </div>

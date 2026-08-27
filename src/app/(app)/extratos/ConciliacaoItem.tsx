@@ -89,6 +89,9 @@ export default function ConciliacaoItem({
   );
   const [mostrarMesesExtras, setMostrarMesesExtras] = useState(false);
   const [mesesExtras, setMesesExtras] = useState<Set<string>>(new Set());
+  const [mostrarExtra, setMostrarExtra] = useState(false);
+  const [temExtra, setTemExtra] = useState(false);
+  const [valorExtra, setValorExtra] = useState("");
 
   const mesesVizinhos = gerarMesesVizinhos(transacao.data);
 
@@ -107,8 +110,17 @@ export default function ConciliacaoItem({
     const extras = mesesVizinhos
       .filter((m) => mesesExtras.has(m.chave))
       .map((m) => ({ ano: m.ano, mes: m.mes }));
+    const valorExtraNumero = parseFloat(valorExtra.replace(",", "."));
+    const contribuicaoExtra = temExtra
+      ? { valor: Number.isFinite(valorExtraNumero) ? valorExtraNumero : undefined }
+      : undefined;
     startTransition(async () => {
-      const res = await confirmarConciliacao(transacao.id, selecionado, extras);
+      const res = await confirmarConciliacao(
+        transacao.id,
+        selecionado,
+        extras,
+        contribuicaoExtra,
+      );
       if (!res.ok) {
         setErro(res.erro ?? "Erro ao confirmar.");
         return;
@@ -226,6 +238,39 @@ export default function ConciliacaoItem({
                 {m.label}
               </label>
             ))}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <button
+          type="button"
+          onClick={() => setMostrarExtra((v) => !v)}
+          className="text-xs font-medium text-brand-blue-dark underline-offset-2 hover:underline"
+        >
+          {mostrarExtra ? "− ocultar contribuição extra" : "+ contribuição extra"}
+        </button>
+        {mostrarExtra && (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-1.5 text-xs text-foreground">
+              <input
+                type="checkbox"
+                checked={temExtra}
+                onChange={(e) => setTemExtra(e.target.checked)}
+                className="h-3 w-3 accent-brand-green-dark"
+              />
+              Teve contribuição acima da mensalidade
+            </label>
+            {temExtra && (
+              <input
+                type="text"
+                inputMode="decimal"
+                placeholder="Quanto, se souber (R$)"
+                value={valorExtra}
+                onChange={(e) => setValorExtra(e.target.value)}
+                className="w-40 rounded-lg border border-border bg-background px-2 py-1 text-xs outline-none focus:border-brand-blue focus:ring-2 focus:ring-brand-blue/30"
+              />
+            )}
           </div>
         )}
       </div>

@@ -48,7 +48,9 @@ export default async function FichaPadrinhoPage({
   const anoAtual = new Date().getFullYear();
   const { data: mensalidades } = await supabase
     .from("mensalidades")
-    .select("mes, pago, transacoes(valor, data)")
+    .select(
+      "mes, pago, transacoes(valor, data, conciliacoes(contribuicao_extra, valor_extra))",
+    )
     .eq("padrinho_id", id)
     .eq("ano", anoAtual);
 
@@ -56,17 +58,35 @@ export default async function FichaPadrinhoPage({
     (mensalidades ?? []).filter((m) => m.pago).map((m) => m.mes),
   );
 
-  const detalhesPorMes = new Map<
-    number,
-    { valor: number; data: string } | null
-  >(
+  type DetalheMes = {
+    valor: number;
+    data: string;
+    contribuicaoExtra: boolean;
+    valorExtra: number | null;
+  } | null;
+
+  const detalhesPorMes = new Map<number, DetalheMes>(
     (mensalidades ?? [])
       .filter((m) => m.pago)
       .map((m) => {
         const transacao = m.transacoes as unknown as
-          | { valor: number; data: string }
+          | {
+              valor: number;
+              data: string;
+              conciliacoes: { contribuicao_extra: boolean; valor_extra: number | null } | null;
+            }
           | null;
-        return [m.mes, transacao ? { valor: transacao.valor, data: transacao.data } : null];
+        return [
+          m.mes,
+          transacao
+            ? {
+                valor: transacao.valor,
+                data: transacao.data,
+                contribuicaoExtra: transacao.conciliacoes?.contribuicao_extra ?? false,
+                valorExtra: transacao.conciliacoes?.valor_extra ?? null,
+              }
+            : null,
+        ];
       }),
   );
 

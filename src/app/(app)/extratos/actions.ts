@@ -114,6 +114,7 @@ export async function confirmarConciliacao(
   transacaoId: string,
   padrinhoId: string,
   mesesAdicionais: { ano: number; mes: number }[] = [],
+  contribuicaoExtra?: { valor?: number },
 ): Promise<{ ok: boolean; erro?: string }> {
   const supabase = await createClient();
 
@@ -137,6 +138,8 @@ export async function confirmarConciliacao(
         transacao_id: transacaoId,
         padrinho_id: padrinhoId,
         confirmado_por: user?.id ?? null,
+        contribuicao_extra: !!contribuicaoExtra,
+        valor_extra: contribuicaoExtra?.valor ?? null,
       },
       { onConflict: "transacao_id" },
     );
