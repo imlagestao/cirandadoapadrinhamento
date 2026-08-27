@@ -17,15 +17,22 @@ const MESES = [
   "Dez",
 ];
 
+function formataDataCurta(iso: string): string {
+  const [, mes, dia] = iso.split("-");
+  return `${dia}/${mes}`;
+}
+
 export default function MensalidadesGrid({
   padrinhoId,
   ano,
   pagos,
+  detalhes,
   alternar,
 }: {
   padrinhoId: string;
   ano: number;
   pagos: Set<number>;
+  detalhes: Map<number, { valor: number; data: string } | null>;
   alternar: (
     padrinhoId: string,
     ano: number,
@@ -60,15 +67,26 @@ export default function MensalidadesGrid({
           <tr>
             {MESES.map((_, i) => {
               const mes = i + 1;
+              const pago = pagos.has(mes);
+              const detalhe = detalhes.get(mes);
               return (
                 <td key={mes} className="border-t border-border px-2 py-3">
-                  <input
-                    type="checkbox"
-                    disabled={isPending}
-                    defaultChecked={pagos.has(mes)}
-                    onChange={(e) => handleToggle(mes, e.target.checked)}
-                    className="h-4 w-4 rounded border-border accent-brand-green-dark"
-                  />
+                  <div className="flex flex-col items-center gap-1">
+                    <input
+                      type="checkbox"
+                      disabled={isPending}
+                      defaultChecked={pago}
+                      onChange={(e) => handleToggle(mes, e.target.checked)}
+                      className="h-4 w-4 rounded border-border accent-brand-green-dark"
+                    />
+                    {pago && (
+                      <span className="text-[10px] leading-tight text-muted">
+                        {detalhe
+                          ? `R$${detalhe.valor} · ${formataDataCurta(detalhe.data)}`
+                          : "manual"}
+                      </span>
+                    )}
+                  </div>
                 </td>
               );
             })}

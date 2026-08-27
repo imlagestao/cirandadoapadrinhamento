@@ -178,6 +178,7 @@ export async function confirmarConciliacao(
     ano: m.ano,
     mes: m.mes,
     pago: true,
+    transacao_id: transacaoId,
   }));
 
   const { error: erroMensalidade } = await supabase

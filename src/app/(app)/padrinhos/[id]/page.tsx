@@ -48,12 +48,26 @@ export default async function FichaPadrinhoPage({
   const anoAtual = new Date().getFullYear();
   const { data: mensalidades } = await supabase
     .from("mensalidades")
-    .select("mes, pago")
+    .select("mes, pago, transacoes(valor, data)")
     .eq("padrinho_id", id)
     .eq("ano", anoAtual);
 
   const mesesPagos = new Set(
     (mensalidades ?? []).filter((m) => m.pago).map((m) => m.mes),
+  );
+
+  const detalhesPorMes = new Map<
+    number,
+    { valor: number; data: string } | null
+  >(
+    (mensalidades ?? [])
+      .filter((m) => m.pago)
+      .map((m) => {
+        const transacao = m.transacoes as unknown as
+          | { valor: number; data: string }
+          | null;
+        return [m.mes, transacao ? { valor: transacao.valor, data: transacao.data } : null];
+      }),
   );
 
   return (
@@ -144,6 +158,7 @@ export default async function FichaPadrinhoPage({
           padrinhoId={id}
           ano={anoAtual}
           pagos={mesesPagos}
+          detalhes={detalhesPorMes}
           alternar={alternarMensalidade}
         />
       </div>

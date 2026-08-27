@@ -113,43 +113,39 @@ export async function alternarMensalidade(
     return { ok: false, erro: error.message };
   }
 
-  // Ao desmarcar, desfaz também a conciliação da(s) transação(ões) daquele
-  // mês com esse padrinho — senão o extrato fica "gasto" com um pagamento
-  // que a equipe acabou de dizer que não é dele, e some da fila de revisão.
+  // Ao desmarcar, desfaz também a conciliação da transação vinculada a esse
+  // mês — mas só se a data dela cair exatamente nesse ano/mês. Isso evita
+  // reabrir a fila por engano ao desmarcar um "mês extra" de uma conciliação
+  // que cobre vários meses (a transação em si continua legitimamente
+  // conciliada pros outros meses que ela paga).
   if (!pago) {
-    const mesStr = String(mes).padStart(2, "0");
-    const inicio = `${ano}-${mesStr}-01`;
-    const proximoMes = mes === 12 ? 1 : mes + 1;
-    const anoProximoMes = mes === 12 ? ano + 1 : ano;
-    const fim = `${anoProximoMes}-${String(proximoMes).padStart(2, "0")}-01`;
-
-    const { data: conciliacoesDoPadrinho } = await supabase
-      .from("conciliacoes")
+    const { data: mensalidade } = await supabase
+      .from("mensalidades")
       .select("transacao_id")
-      .eq("padrinho_id", padrinhoId);
+      .eq("padrinho_id", padrinhoId)
+      .eq("ano", ano)
+      .eq("mes", mes)
+      .single();
 
-    const idsConciliados = (conciliacoesDoPadrinho ?? []).map(
-      (c) => c.transacao_id as string,
-    );
+    const transacaoId = mensalidade?.transacao_id as string | null | undefined;
 
-    if (idsConciliados.length > 0) {
-      const { data: transacoesDoMes } = await supabase
+    if (transacaoId) {
+      const { data: transacao } = await supabase
         .from("transacoes")
-        .select("id")
-        .in("id", idsConciliados)
-        .gte("data", inicio)
-        .lt("data", fim);
+        .select("data")
+        .eq("id", transacaoId)
+        .single();
 
-      const transacaoIds = (transacoesDoMes ?? []).map((t) => t.id as string);
-      if (transacaoIds.length > 0) {
-        await supabase
-          .from("conciliacoes")
-          .delete()
-          .in("transacao_id", transacaoIds);
+      const [anoTransacao, mesTransacao] = (transacao?.data ?? "").split("-");
+      const ehOMesDaTransacao =
+        Number(anoTransacao) === ano && Number(mesTransacao) === mes;
+
+      if (ehOMesDaTransacao) {
+        await supabase.from("conciliacoes").delete().eq("transacao_id", transacaoId);
         await supabase
           .from("transacoes")
           .update({ status_conciliacao: "pendente" })
-          .in("id", transacaoIds);
+          .eq("id", transacaoId);
       }
     }
   }
