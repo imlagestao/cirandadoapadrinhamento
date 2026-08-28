@@ -20,10 +20,6 @@ function formataData(iso: string | null): string {
   return `${dia}/${mes}/${ano}`;
 }
 
-function formataValor(v: number): string {
-  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
 export default async function FichaPadrinhoPage({
   params,
 }: {
@@ -58,24 +54,6 @@ export default async function FichaPadrinhoPage({
     )
     .eq("padrinho_id", id)
     .eq("ano", anoAtual);
-
-  // Valor habitual: último pagamento com transação vinculada, de qualquer
-  // ano — pra estimar quanto esse padrinho costuma pagar por afilhado.
-  const { data: ultimosPagamentos } = await supabase
-    .from("mensalidades")
-    .select("ano, mes, transacoes(valor, data)")
-    .eq("padrinho_id", id)
-    .eq("pago", true)
-    .not("transacao_id", "is", null)
-    .order("ano", { ascending: false })
-    .order("mes", { ascending: false })
-    .limit(1);
-
-  const ultimoPagamento = (
-    ultimosPagamentos?.[0]?.transacoes as unknown as
-      | { valor: number; data: string }
-      | null
-  ) ?? null;
 
   const mesesPagos = new Set(
     (mensalidades ?? []).filter((m) => m.pago).map((m) => m.mes),
@@ -152,18 +130,6 @@ export default async function FichaPadrinhoPage({
             value={formataData(padrinho.padrinho_desde)}
           />
           <Info label="Nº de afilhados" value={String(afilhados.length)} />
-          <Info
-            label="Valor habitual por afilhado"
-            value={
-              ultimoPagamento
-                ? `${formataValor(
-                    afilhados.length > 0
-                      ? ultimoPagamento.valor / afilhados.length
-                      : ultimoPagamento.valor,
-                  )} (último pagamento: ${formataValor(ultimoPagamento.valor)} em ${formataData(ultimoPagamento.data)})`
-                : "sem histórico de pagamento ainda"
-            }
-          />
           <Info
             label={`Pendência ${anoAtual}`}
             value={padrinho.pendencia ? "Sim" : "Não"}

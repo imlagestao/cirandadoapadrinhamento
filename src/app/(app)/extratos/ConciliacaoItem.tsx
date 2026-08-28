@@ -239,25 +239,18 @@ export default function ConciliacaoItem({
             </p>
           )}
           {padrinhoSelecionado && (
-            <p className="mt-1 text-xs font-medium text-foreground">
-              👥 {afilhadosSelecionado} afilhado(s)
-              {padrinhoSelecionado.valorHabitual && (
-                <>
-                  {" · "}
-                  {formataValor(padrinhoSelecionado.valorHabitual.porAfilhado)}
-                  /afilhado habitual (último pagamento:{" "}
-                  {formataValor(padrinhoSelecionado.valorHabitual.total)} em{" "}
-                  {formataData(padrinhoSelecionado.valorHabitual.data)})
-                </>
-              )}
-              {!padrinhoSelecionado.valorHabitual && " · sem histórico de pagamento ainda"}
+            <p className="mt-1 inline-block rounded-md bg-brand-green-dark px-2 py-1 text-xs font-medium text-white">
+              {afilhadosSelecionado} afilhado(s)
             </p>
           )}
           {dica && (
             <div className="mt-1 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
               <p className="font-semibold">⚠️ Valor não bate!</p>
-              <p>Pode ser {dica.multiplos.join(" ou ")} (meses adicionais)</p>
-              <p>ou outra situação. Apurar.</p>
+              <p>
+                Pode ser {dica.multiplos.join(" ou ")} (meses adicionais) ou
+                outra situação.
+              </p>
+              <p className="font-bold">Apurar.</p>
             </div>
           )}
         </div>
