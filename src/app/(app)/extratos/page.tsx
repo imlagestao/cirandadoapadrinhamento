@@ -39,6 +39,7 @@ export default async function ExtratosPage() {
   const [
     { data: padrinhos },
     { data: apadrinhamentos },
+    { data: mensalidadesPagas },
     { data: pendentes },
     { data: conciliadas },
     { data: ignorados },
@@ -47,6 +48,7 @@ export default async function ExtratosPage() {
   ] = await Promise.all([
     supabase.from("padrinhos").select("id, nome").order("nome"),
     supabase.from("apadrinhamentos").select("padrinho_id"),
+    supabase.from("mensalidades").select("padrinho_id, ano, mes").eq("pago", true),
     supabase
       .from("transacoes")
       .select("id, data, descricao, nome_extraido, valor")
@@ -81,9 +83,17 @@ export default async function ExtratosPage() {
     const id = a.padrinho_id as string;
     afilhadosPorPadrinho.set(id, (afilhadosPorPadrinho.get(id) ?? 0) + 1);
   }
+  const mesesPagosPorPadrinho = new Map<string, string[]>();
+  for (const m of mensalidadesPagas ?? []) {
+    const id = m.padrinho_id as string;
+    const chave = `${m.ano}-${m.mes}`;
+    if (!mesesPagosPorPadrinho.has(id)) mesesPagosPorPadrinho.set(id, []);
+    mesesPagosPorPadrinho.get(id)!.push(chave);
+  }
   const listaPadrinhos = (padrinhos ?? []).map((p) => ({
     ...p,
     afilhados: afilhadosPorPadrinho.get(p.id) ?? 0,
+    mesesPagos: mesesPagosPorPadrinho.get(p.id) ?? [],
   }));
   const listaPendentes = (pendentes ?? []) as TransacaoRow[];
   const listaIgnorados = (ignorados ?? []) as TransacaoIgnoradaRow[];

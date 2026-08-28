@@ -83,7 +83,12 @@ export default function ConciliacaoItem({
 }: {
   transacao: Transacao;
   sugestoes: SugestaoPadrinho[];
-  padrinhosDisponiveis: { id: string; nome: string; afilhados: number }[];
+  padrinhosDisponiveis: {
+    id: string;
+    nome: string;
+    afilhados: number;
+    mesesPagos: string[];
+  }[];
 }) {
   const [isPending, startTransition] = useTransition();
   const [feito, setFeito] = useState(false);
@@ -102,7 +107,15 @@ export default function ConciliacaoItem({
     { padrinhoId: "", valor: "" },
   ]);
 
-  const mesesVizinhos = gerarMesesVizinhos(transacao.data);
+  const todosMesesVizinhos = gerarMesesVizinhos(transacao.data);
+  const mesesPagosSelecionado = new Set(
+    padrinhosDisponiveis.find((p) => p.id === selecionado)?.mesesPagos ?? [],
+  );
+  // Não faz sentido oferecer marcar como "mês adicional" um mês que esse
+  // padrinho já tem pago — só polui a lista e pode levar a marcar de novo.
+  const mesesVizinhos = todosMesesVizinhos.filter(
+    (m) => !mesesPagosSelecionado.has(m.chave),
+  );
 
   function alternarMesExtra(chave: string, marcado: boolean) {
     setMesesExtras((atual) => {
@@ -258,6 +271,7 @@ export default function ConciliacaoItem({
         </div>
       </div>
 
+      <div className="flex flex-col gap-1.5">
       <div>
         <button
           type="button"
@@ -392,6 +406,7 @@ export default function ConciliacaoItem({
             </button>
           </div>
         )}
+      </div>
       </div>
 
       {erro && <p className="text-xs text-red-600">{erro}</p>}
