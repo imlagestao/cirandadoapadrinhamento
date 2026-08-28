@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { atualizarCrianca } from "../../actions";
 import CriancaForm from "../../CriancaForm";
+import NaoFrequentaButton from "../NaoFrequentaButton";
 
 export default async function EditarCriancaPage({
   params,
@@ -28,10 +29,17 @@ export default async function EditarCriancaPage({
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6">
-      <div>
+      <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight text-foreground">
           Editar cadastro
         </h1>
+        {crianca.status === "matriculado" && (
+          <NaoFrequentaButton
+            criancaId={id}
+            nome={crianca.nome}
+            temPadrinho={(vinculos ?? []).length > 0}
+          />
+        )}
       </div>
 
       <CriancaForm

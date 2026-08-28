@@ -408,6 +408,64 @@ export async function criarPadrinhoEVincular(
   return { ok: true };
 }
 
+// Ação rápida (fora do formulário de edição) pra marcar que a criança não
+// frequenta mais — sem precisar abrir a tela de editar e mexer no status
+// manualmente. Já solta o padrinho/madrinha vinculado (a mesma regra do
+// atualizarCrianca: retirado nunca fica com padrinho).
+export async function marcarNaoFrequenta(
+  criancaId: string,
+): Promise<{ ok: boolean; erro?: string }> {
+  const supabase = await createClient();
+
+  const [{ data: crianca }, { data: vinculos }] = await Promise.all([
+    supabase.from("criancas").select("nome").eq("id", criancaId).single(),
+    supabase
+      .from("apadrinhamentos")
+      .select("padrinhos(nome)")
+      .eq("crianca_id", criancaId),
+  ]);
+
+  if (!crianca) {
+    return { ok: false, erro: "Criança não encontrada." };
+  }
+
+  const { error: erroStatus } = await supabase
+    .from("criancas")
+    .update({ status: "retirado" })
+    .eq("id", criancaId);
+  if (erroStatus) {
+    return { ok: false, erro: erroStatus.message };
+  }
+
+  const { error: erroVinculos } = await supabase
+    .from("apadrinhamentos")
+    .delete()
+    .eq("crianca_id", criancaId);
+  if (erroVinculos) {
+    return { ok: false, erro: erroVinculos.message };
+  }
+
+  const nomesPadrinhos = (vinculos ?? [])
+    .map((v) => (v.padrinhos as unknown as { nome: string } | null)?.nome)
+    .filter((n): n is string => Boolean(n));
+
+  await registrarAtualizacao(supabase, {
+    tipo: "crianca_status",
+    situacao: "desistencia",
+    descricao:
+      nomesPadrinhos.length > 0
+        ? `Retirou ${crianca.nome} da lista (não está mais frequentando) — ${nomesPadrinhos.join(", ")} fica(m) disponível(is) para outro afilhado`
+        : `Retirou ${crianca.nome} da lista (não está mais frequentando)`,
+  });
+
+  revalidatePath("/criancas");
+  revalidatePath("/criancas/sem-padrinho");
+  revalidatePath("/padrinhos");
+  revalidatePath("/");
+
+  return { ok: true };
+}
+
 export async function criarCrianca(
   formData: FormData,
 ): Promise<{ ok: false; erro: string } | undefined> {
