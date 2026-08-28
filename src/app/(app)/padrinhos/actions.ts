@@ -50,6 +50,7 @@ export async function criarPadrinho(
 
   await registrarAtualizacao(supabase, {
     tipo: "padrinho_criado",
+    situacao: "novo_padrinho",
     descricao: `Cadastrou o padrinho/madrinha ${dados.nome}`,
   });
 
@@ -138,6 +139,7 @@ export async function registrarDesistencia(
 
   await registrarAtualizacao(supabase, {
     tipo: "apadrinhamento_alterado",
+    situacao: "desistencia",
     descricao:
       nomesAfilhados.length > 0
         ? `${padrinho.nome} desistiu do apadrinhamento — afilhado(s) voltaram pra fila sem padrinho: ${nomesAfilhados.join(", ")}`

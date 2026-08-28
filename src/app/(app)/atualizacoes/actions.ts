@@ -2,6 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { SITUACOES, type Situacao } from "@/lib/situacoes";
+
+const SITUACOES_VALIDAS = new Set(SITUACOES.map((s) => s.valor));
 
 export async function criarAtualizacaoManual(
   formData: FormData,
@@ -11,14 +14,15 @@ export async function criarAtualizacaoManual(
     return { ok: false, erro: "Escreva o que aconteceu." };
   }
 
+  const situacao = String(formData.get("situacao") ?? "").trim();
+  if (!SITUACOES_VALIDAS.has(situacao as Situacao)) {
+    return { ok: false, erro: "Selecione a situação." };
+  }
+
   // Data em branco = agora mesmo (padrão do banco); data escolhida = meio-dia
   // daquele dia, só pra evitar que o fuso horário jogue pro dia errado.
   const dataEscolhida = String(formData.get("data") ?? "").trim();
   const criadoEm = dataEscolhida ? `${dataEscolhida}T12:00:00` : undefined;
-
-  // Autor escolhido no formulário (pra registrar em nome de outra pessoa da
-  // equipe) tem prioridade sobre quem está logado agora.
-  const autorEscolhido = String(formData.get("autor") ?? "").trim();
 
   const supabase = await createClient();
   const {
@@ -29,7 +33,8 @@ export async function criarAtualizacaoManual(
     tipo: "manual",
     origem: "manual",
     descricao,
-    autor_email: autorEscolhido || user?.email || null,
+    situacao,
+    autor_email: user?.email || null,
     ...(criadoEm ? { criado_em: criadoEm } : {}),
   });
 

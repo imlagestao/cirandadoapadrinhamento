@@ -251,6 +251,7 @@ export async function importarPlanilha(formData: FormData) {
 
   await registrarAtualizacao(supabase, {
     tipo: "importacao",
+    situacao: "migracao_atualizacao",
     descricao: `Reimportou planilha de crianças (substituiu toda a lista): ${criancasInseridas?.length ?? 0} crianças, ${padrinhosParaCriar.length} padrinhos novos, ${vinculos.length} vínculos`,
   });
 
@@ -342,6 +343,7 @@ export async function vincularPadrinhoRapido(
   ]);
   await registrarAtualizacao(supabase, {
     tipo: "apadrinhamento_alterado",
+    situacao: "migracao_atualizacao",
     descricao: `Vinculou ${padrinho?.nome ?? "um padrinho/madrinha"} como padrinho/madrinha de ${crianca?.nome ?? "uma criança"}`,
   });
 
@@ -391,6 +393,7 @@ export async function criarPadrinhoEVincular(
     .single();
   await registrarAtualizacao(supabase, {
     tipo: "padrinho_criado",
+    situacao: "novo_padrinho",
     descricao: `Cadastrou o padrinho/madrinha ${nome} e vinculou como padrinho/madrinha de ${crianca?.nome ?? "uma criança"}`,
   });
 
@@ -430,6 +433,7 @@ export async function criarCrianca(
   const nomesPadrinhos = await nomesDePadrinhos(supabase, padrinhoIds);
   await registrarAtualizacao(supabase, {
     tipo: "crianca_criada",
+    situacao: "novo_afilhado",
     descricao:
       nomesPadrinhos.length > 0
         ? `Cadastrou a criança ${dados.nome} e vinculou a ${nomesPadrinhos.join(", ")}`
@@ -471,6 +475,7 @@ export async function atualizarCrianca(
   if (antes && antes.status !== dados.status) {
     await registrarAtualizacao(supabase, {
       tipo: "crianca_status",
+      situacao: dados.status === "retirado" ? "desistencia" : "migracao_atualizacao",
       descricao:
         dados.status === "retirado"
           ? `Retirou ${dados.nome} da lista (não está mais frequentando)`
@@ -510,6 +515,7 @@ export async function atualizarCrianca(
 
     await registrarAtualizacao(supabase, {
       tipo: "apadrinhamento_alterado",
+      situacao: "migracao_atualizacao",
       descricao,
     });
   }

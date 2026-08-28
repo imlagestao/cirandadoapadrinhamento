@@ -5,6 +5,7 @@ import NovaAtualizacaoForm from "./NovaAtualizacaoForm";
 type AtualizacaoRow = {
   id: string;
   tipo: string;
+  situacao: string | null;
   descricao: string;
   origem: "automatico" | "manual";
   autor_email: string | null;
@@ -17,7 +18,7 @@ export default async function AtualizacoesPage() {
 
   const { data: atualizacoes } = await supabase
     .from("atualizacoes")
-    .select("id, tipo, descricao, origem, autor_email, criado_em, editado_em")
+    .select("id, tipo, situacao, descricao, origem, autor_email, criado_em, editado_em")
     .order("criado_em", { ascending: false })
     .limit(1000);
 
