@@ -25,40 +25,31 @@ function formataValor(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+// Os únicos dois valores de mensalidade praticados pelo instituto — nunca
+// usar outro valor como base de comparação (nem o histórico específico de um
+// padrinho), senão a sugestão fica sem sentido pra equipe.
 const VALORES_MENSALIDADE = [20, 25];
 
 // Sugestão sobre um valor que não é exatamente "1 afilhado x mensalidade":
 // pode ser porque esse padrinho tem mais de um afilhado (valor normal), o PIX
 // cobre mais de um mês, ou é contribuição extra — não dá pra saber sozinho
 // qual dos casos é, então é só um alerta pra equipe conferir, nunca decide
-// nada automaticamente. Testa tanto os valores padrão (R$20/25) quanto o
-// valor habitual desse padrinho específico, se tiver histórico.
+// nada automaticamente.
 function dicaValor(
   valor: number,
   afilhados: number,
-  valorHabitualPorAfilhado: number | null,
 ): { multiplos: string[] } | null {
-  const bases = [
-    ...new Set(
-      [valorHabitualPorAfilhado, ...VALORES_MENSALIDADE].filter(
-        (b): b is number => !!b && b > 0,
-      ),
-    ),
-  ];
-
   if (afilhados > 0) {
-    const bateComAfilhados = bases.some(
+    const bateComAfilhados = VALORES_MENSALIDADE.some(
       (base) => Math.abs(valor - afilhados * base) < 0.01,
     );
     if (bateComAfilhados) return null;
   }
 
-  const multiplos = bases
-    .map((base) => {
-      const n = valor / base;
-      return Number.isInteger(n) && n >= 2 ? `${n}x R$${base}` : null;
-    })
-    .filter((m): m is string => m !== null);
+  const multiplos = VALORES_MENSALIDADE.map((base) => {
+    const n = valor / base;
+    return Number.isInteger(n) && n >= 2 ? `${n}x R$${base}` : null;
+  }).filter((m): m is string => m !== null);
 
   return multiplos.length > 0 ? { multiplos } : null;
 }
@@ -100,7 +91,6 @@ export default function ConciliacaoItem({
     nome: string;
     afilhados: number;
     mesesPagos: string[];
-    valorHabitual: { total: number; data: string; porAfilhado: number } | null;
   }[];
 }) {
   const [isPending, startTransition] = useTransition();
@@ -216,11 +206,7 @@ export default function ConciliacaoItem({
   const melhorScore = sugestoes[0]?.score ?? 0;
   const padrinhoSelecionado = padrinhosDisponiveis.find((p) => p.id === selecionado);
   const afilhadosSelecionado = padrinhoSelecionado?.afilhados ?? 0;
-  const dica = dicaValor(
-    transacao.valor,
-    afilhadosSelecionado,
-    padrinhoSelecionado?.valorHabitual?.porAfilhado ?? null,
-  );
+  const dica = dicaValor(transacao.valor, afilhadosSelecionado);
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
