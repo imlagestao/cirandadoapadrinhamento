@@ -27,28 +27,40 @@ function formataValor(v: number): string {
 
 const VALORES_MENSALIDADE = [20, 25];
 
-// Sugestão visual sobre um valor que não é exatamente "1 afilhado x mensalidade":
-// pode ser porque esse padrinho tem mais de um afilhado (valor normal) OU
-// porque o PIX cobre mais de um mês — não dá pra saber sozinho qual dos dois
-// é (não sabemos qual dos valores de mensalidade foi combinado com cada um),
-// então é só uma dica pra equipe conferir, nunca decide nada automaticamente.
-function dicaValor(valor: number, afilhados: number): string | null {
+// Sugestão sobre um valor que não é exatamente "1 afilhado x mensalidade":
+// pode ser porque esse padrinho tem mais de um afilhado (valor normal), o PIX
+// cobre mais de um mês, ou é contribuição extra — não dá pra saber sozinho
+// qual dos casos é, então é só um alerta pra equipe conferir, nunca decide
+// nada automaticamente. Testa tanto os valores padrão (R$20/25) quanto o
+// valor habitual desse padrinho específico, se tiver histórico.
+function dicaValor(
+  valor: number,
+  afilhados: number,
+  valorHabitualPorAfilhado: number | null,
+): { multiplos: string[] } | null {
+  const bases = [
+    ...new Set(
+      [valorHabitualPorAfilhado, ...VALORES_MENSALIDADE].filter(
+        (b): b is number => !!b && b > 0,
+      ),
+    ),
+  ];
+
   if (afilhados > 0) {
-    const bateComAfilhados = VALORES_MENSALIDADE.some(
-      (base) => valor === afilhados * base,
+    const bateComAfilhados = bases.some(
+      (base) => Math.abs(valor - afilhados * base) < 0.01,
     );
     if (bateComAfilhados) return null;
   }
 
-  const multiplos = VALORES_MENSALIDADE.filter((base) => {
-    const n = valor / base;
-    return Number.isInteger(n) && n >= 2;
-  }).map((base) => `${valor / base}x R$${base}`);
-  if (multiplos.length === 0) return null;
+  const multiplos = bases
+    .map((base) => {
+      const n = valor / base;
+      return Number.isInteger(n) && n >= 2 ? `${n}x R$${base}` : null;
+    })
+    .filter((m): m is string => m !== null);
 
-  return afilhados > 0
-    ? `Valor não bate com ${afilhados} afilhado(s) a R$20/25 — pode ser ${multiplos.join(" ou ")} (meses extras) ou mais afilhados do que o cadastrado.`
-    : `Pode ser ${multiplos.join(" ou ")} — confira se cobre mais de um mês.`;
+  return multiplos.length > 0 ? { multiplos } : null;
 }
 
 function gerarMesesVizinhos(
@@ -88,6 +100,7 @@ export default function ConciliacaoItem({
     nome: string;
     afilhados: number;
     mesesPagos: string[];
+    valorHabitual: { total: number; data: string; porAfilhado: number } | null;
   }[];
 }) {
   const [isPending, startTransition] = useTransition();
@@ -201,9 +214,13 @@ export default function ConciliacaoItem({
   if (feito) return null;
 
   const melhorScore = sugestoes[0]?.score ?? 0;
-  const afilhadosSelecionado =
-    padrinhosDisponiveis.find((p) => p.id === selecionado)?.afilhados ?? 0;
-  const dica = dicaValor(transacao.valor, afilhadosSelecionado);
+  const padrinhoSelecionado = padrinhosDisponiveis.find((p) => p.id === selecionado);
+  const afilhadosSelecionado = padrinhoSelecionado?.afilhados ?? 0;
+  const dica = dicaValor(
+    transacao.valor,
+    afilhadosSelecionado,
+    padrinhoSelecionado?.valorHabitual?.porAfilhado ?? null,
+  );
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
@@ -221,10 +238,27 @@ export default function ConciliacaoItem({
               confiança)
             </p>
           )}
-          {dica && (
-            <p className="text-xs text-brand-blue-dark">
-              {dica} — confira se cobre mais de um mês.
+          {padrinhoSelecionado && (
+            <p className="mt-1 text-xs font-medium text-foreground">
+              👥 {afilhadosSelecionado} afilhado(s)
+              {padrinhoSelecionado.valorHabitual && (
+                <>
+                  {" · "}
+                  {formataValor(padrinhoSelecionado.valorHabitual.porAfilhado)}
+                  /afilhado habitual (último pagamento:{" "}
+                  {formataValor(padrinhoSelecionado.valorHabitual.total)} em{" "}
+                  {formataData(padrinhoSelecionado.valorHabitual.data)})
+                </>
+              )}
+              {!padrinhoSelecionado.valorHabitual && " · sem histórico de pagamento ainda"}
             </p>
+          )}
+          {dica && (
+            <div className="mt-1 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              <p className="font-semibold">⚠️ Valor não bate!</p>
+              <p>Pode ser {dica.multiplos.join(" ou ")} (meses adicionais)</p>
+              <p>ou outra situação. Apurar.</p>
+            </div>
           )}
         </div>
 

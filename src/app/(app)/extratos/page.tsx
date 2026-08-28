@@ -48,7 +48,10 @@ export default async function ExtratosPage() {
   ] = await Promise.all([
     supabase.from("padrinhos").select("id, nome").order("nome"),
     supabase.from("apadrinhamentos").select("padrinho_id"),
-    supabase.from("mensalidades").select("padrinho_id, ano, mes").eq("pago", true),
+    supabase
+      .from("mensalidades")
+      .select("padrinho_id, ano, mes, transacoes(valor, data)")
+      .eq("pago", true),
     supabase
       .from("transacoes")
       .select("id, data, descricao, nome_extraido, valor")
@@ -84,17 +87,37 @@ export default async function ExtratosPage() {
     afilhadosPorPadrinho.set(id, (afilhadosPorPadrinho.get(id) ?? 0) + 1);
   }
   const mesesPagosPorPadrinho = new Map<string, string[]>();
+  const ultimoPagamentoPorPadrinho = new Map<string, { valor: number; data: string }>();
   for (const m of mensalidadesPagas ?? []) {
     const id = m.padrinho_id as string;
     const chave = `${m.ano}-${m.mes}`;
     if (!mesesPagosPorPadrinho.has(id)) mesesPagosPorPadrinho.set(id, []);
     mesesPagosPorPadrinho.get(id)!.push(chave);
+
+    const transacao = m.transacoes as unknown as { valor: number; data: string } | null;
+    if (transacao) {
+      const atual = ultimoPagamentoPorPadrinho.get(id);
+      if (!atual || transacao.data > atual.data) {
+        ultimoPagamentoPorPadrinho.set(id, transacao);
+      }
+    }
   }
-  const listaPadrinhos = (padrinhos ?? []).map((p) => ({
-    ...p,
-    afilhados: afilhadosPorPadrinho.get(p.id) ?? 0,
-    mesesPagos: mesesPagosPorPadrinho.get(p.id) ?? [],
-  }));
+  const listaPadrinhos = (padrinhos ?? []).map((p) => {
+    const afilhados = afilhadosPorPadrinho.get(p.id) ?? 0;
+    const ultimoPagamento = ultimoPagamentoPorPadrinho.get(p.id) ?? null;
+    return {
+      ...p,
+      afilhados,
+      mesesPagos: mesesPagosPorPadrinho.get(p.id) ?? [],
+      valorHabitual: ultimoPagamento
+        ? {
+            total: ultimoPagamento.valor,
+            data: ultimoPagamento.data,
+            porAfilhado: afilhados > 0 ? ultimoPagamento.valor / afilhados : ultimoPagamento.valor,
+          }
+        : null,
+    };
+  });
   const listaPendentes = (pendentes ?? []) as TransacaoRow[];
   const listaIgnorados = (ignorados ?? []) as TransacaoIgnoradaRow[];
   const listaConciliadas = (conciliadas ?? []) as unknown as TransacaoConciliadaRow[];
