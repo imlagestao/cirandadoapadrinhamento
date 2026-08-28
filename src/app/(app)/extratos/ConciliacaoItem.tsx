@@ -248,9 +248,8 @@ export default function ConciliacaoItem({
               <p className="font-semibold">⚠️ Valor não bate!</p>
               <p>
                 Pode ser {dica.multiplos.join(" ou ")} (meses adicionais) ou
-                outra situação.
+                outra situação. <span className="font-bold">Apurar.</span>
               </p>
-              <p className="font-bold">Apurar.</p>
             </div>
           )}
         </div>
