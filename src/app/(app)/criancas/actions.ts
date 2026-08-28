@@ -302,11 +302,14 @@ async function nomesDePadrinhos(
 async function salvarVinculosPadrinhos(
   criancaId: string,
   formData: FormData,
+  padrinhoIdsForcados?: string[],
 ) {
   const supabase = await createClient();
-  const padrinhoIds = formData.getAll("padrinho_ids").filter(
-    (v): v is string => typeof v === "string" && v.length > 0,
-  );
+  const padrinhoIds =
+    padrinhoIdsForcados ??
+    formData.getAll("padrinho_ids").filter(
+      (v): v is string => typeof v === "string" && v.length > 0,
+    );
 
   await supabase.from("apadrinhamentos").delete().eq("crianca_id", criancaId);
 
@@ -470,7 +473,13 @@ export async function atualizarCrianca(
     return { ok: false, erro: error.message };
   }
 
-  await salvarVinculosPadrinhos(id, formData);
+  // Retirado nunca fica com padrinho vinculado — mesmo que a pessoa tenha
+  // esquecido de desmarcar o padrinho na mesma tela ao marcar a retirada.
+  await salvarVinculosPadrinhos(
+    id,
+    formData,
+    dados.status === "retirado" ? [] : undefined,
+  );
 
   if (antes && antes.status !== dados.status) {
     await registrarAtualizacao(supabase, {
@@ -487,9 +496,11 @@ export async function atualizarCrianca(
     (vinculosAntes ?? []).map((v) => v.padrinho_id as string),
   );
   const idsDepois = new Set(
-    formData
-      .getAll("padrinho_ids")
-      .filter((v): v is string => typeof v === "string" && v.length > 0),
+    dados.status === "retirado"
+      ? []
+      : formData
+          .getAll("padrinho_ids")
+          .filter((v): v is string => typeof v === "string" && v.length > 0),
   );
   const saiuIds = [...idsAntes].filter((pid) => !idsDepois.has(pid));
   const entrouIds = [...idsDepois].filter((pid) => !idsAntes.has(pid));
