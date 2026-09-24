@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getResumoInadimplencia } from "@/lib/inadimplencia";
+import { getAniversariantesDoMes } from "@/lib/aniversarios";
 
 export default async function Home() {
   const supabase = await createClient();
@@ -12,6 +14,7 @@ export default async function Home() {
     { count: pendentes },
     { data: criancasMatriculadas },
     resumoInadimplencia,
+    aniversariantes,
   ] = await Promise.all([
     supabase
       .from("criancas")
@@ -30,6 +33,7 @@ export default async function Home() {
       .select("id, apadrinhamentos(id)")
       .eq("status", "matriculado"),
     getResumoInadimplencia(hoje.getFullYear(), hoje.getMonth() + 1),
+    getAniversariantesDoMes(hoje.getMonth() + 1),
   ]);
 
   const semApadrinhar = (
@@ -60,6 +64,12 @@ export default async function Home() {
       value: resumoInadimplencia.inadimplentes.length,
       accent: "green",
     },
+    {
+      label: "Aniversariantes do mês",
+      value: aniversariantes.padrinhos.length + aniversariantes.criancas.length,
+      accent: "blue",
+      href: "/aniversariantes",
+    },
   ] as const;
 
   const accentClasses: Record<string, string> = {
@@ -80,19 +90,30 @@ export default async function Home() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        {stats.map((stat) => (
-          <div
-            key={stat.label}
-            className={`rounded-xl border border-border border-l-4 bg-surface p-5 shadow-sm ${
-              accentClasses[stat.accent]
-            }`}
-          >
-            <p className="text-sm text-muted">{stat.label}</p>
-            <p className="mt-2 text-3xl font-bold text-foreground">
-              {stat.value}
-            </p>
-          </div>
-        ))}
+        {stats.map((stat) => {
+          const conteudo = (
+            <>
+              <p className="text-sm text-muted">{stat.label}</p>
+              <p className="mt-2 text-3xl font-bold text-foreground">
+                {stat.value}
+              </p>
+            </>
+          );
+          const className = `rounded-xl border border-border border-l-4 bg-surface p-5 shadow-sm ${
+            accentClasses[stat.accent]
+          }`;
+          const href = "href" in stat ? stat.href : undefined;
+
+          return href ? (
+            <Link key={stat.label} href={href} className={`${className} transition-colors hover:bg-brand-blue/5`}>
+              {conteudo}
+            </Link>
+          ) : (
+            <div key={stat.label} className={className}>
+              {conteudo}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
